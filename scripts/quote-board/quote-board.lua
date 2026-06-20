@@ -21,6 +21,13 @@ local MIN_MSG_LEN     = 10     -- chat messages shorter than this are ignored
 -- If auto-detection fails, set this to the peripheral side or name of your Chat Box
 -- (e.g. "left", "right", "top", "peripheral_0"). Leave blank for auto-detect.
 local CHAT_BOX_NAME   = ""
+-- Quote selection weights. Each candidate quote is assigned a weight:
+--   DIFF_CAT_WEIGHT  — quote is from a different category than the current one
+--   SAME_CAT_WEIGHT  — quote is from the same category (but not the exact same quote)
+-- The next quote is chosen by weighted random draw, so raising DIFF_CAT_WEIGHT
+-- makes category changes more likely without making them guaranteed.
+local DIFF_CAT_WEIGHT = 4
+local SAME_CAT_WEIGHT = 1
 -- ============================================================
 
 -- Instrument aliases (keep note tables readable)
@@ -560,6 +567,55 @@ local function drawScreen(mon, quote)
 end
 
 -- ============================================================
+-- Weighted random quote selection
+-- Quotes in a different category than the current one are
+-- DIFF_CAT_WEIGHT times more likely to be chosen. The quote
+-- currently on screen is excluded (weight 0) to prevent
+-- back-to-back repeats.
+-- ============================================================
+local function pickNextQuote(currentIdx)
+  local n = #allQuotes
+  if n <= 1 then return 1 end
+
+  local currentCat = allQuotes[currentIdx] and allQuotes[currentIdx][3]
+
+  -- Build a cumulative-weight table in a single pass
+  local cumWeights = {}
+  local total = 0
+  for i = 1, n do
+    local w
+    if i == currentIdx then
+      w = 0                              -- never repeat the same quote immediately
+    elseif allQuotes[i][3] == currentCat then
+      w = SAME_CAT_WEIGHT
+    else
+      w = DIFF_CAT_WEIGHT
+    end
+    total = total + w
+    cumWeights[i] = total
+  end
+
+  -- Fallback: if every slot has zero weight (only one unique quote), pick randomly
+  if total == 0 then
+    local pick = math.random(n)
+    return pick ~= currentIdx and pick or (pick % n) + 1
+  end
+
+  local roll = math.random(total)
+  -- Binary-search the cumulative table for the winning slot
+  local lo, hi = 1, n
+  while lo < hi do
+    local mid = math.floor((lo + hi) / 2)
+    if cumWeights[mid] < roll then
+      lo = mid + 1
+    else
+      hi = mid
+    end
+  end
+  return lo
+end
+
+-- ============================================================
 -- Display loop — rotates quotes every QUOTE_INTERVAL seconds
 -- ============================================================
 local function displayLoop(mon)
@@ -569,7 +625,7 @@ local function displayLoop(mon)
       drawScreen(mon, q)
     end
     os.sleep(QUOTE_INTERVAL)
-    state.quoteIdx = (state.quoteIdx % #allQuotes) + 1
+    state.quoteIdx = pickNextQuote(state.quoteIdx)
   end
 end
 
