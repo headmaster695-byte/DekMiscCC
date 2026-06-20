@@ -18,6 +18,9 @@ local MONITOR_SCALE   = 0.5    -- text scale sent to the monitor (try 0.5 or 1)
 local CHAT_FILE       = "quote-board-chat.dat"  -- where chat quotes are persisted
 local MAX_CHAT_QUOTES = 50     -- oldest entry is dropped when this limit is exceeded
 local MIN_MSG_LEN     = 10     -- chat messages shorter than this are ignored
+-- If auto-detection fails, set this to the peripheral side or name of your Chat Box
+-- (e.g. "left", "right", "top", "peripheral_0"). Leave blank for auto-detect.
+local CHAT_BOX_NAME   = ""
 -- ============================================================
 
 -- Instrument aliases (keep note tables readable)
@@ -245,6 +248,136 @@ local BUILTIN_QUOTES = {
     "If this is taking too long, it is not a bug. It is an opportunity for self-reflection.",
     "Support FAQ", "LOADING"
   },
+
+  -- QUOTE (real-life: misquotations, slight rewrites, absurd context) ───────
+  {
+    "Elementary, my dear Watson.",
+    "Sherlock Holmes — never written by Doyle", "QUOTE"
+  },
+  {
+    "Play it again, Sam.",
+    "Casablanca — nobody in the film says this", "QUOTE"
+  },
+  {
+    "Houston, we have a problem.",
+    "Apollo 13 — they said 'we've had a problem'", "QUOTE"
+  },
+  {
+    "Let them eat cake.",
+    "Marie Antoinette — predates her by about thirty years", "QUOTE"
+  },
+  {
+    "I cannot tell a lie.",
+    "George Washington — invented by his biographer after his death", "QUOTE"
+  },
+  {
+    "The definition of insanity is doing the same thing over and over and expecting different results.",
+    "Einstein — he never said this. Neither did Franklin or Twain.", "QUOTE"
+  },
+  {
+    "Luke, I am your father.",
+    "Darth Vader — the actual line is 'No, I am your father'", "QUOTE"
+  },
+  {
+    "If you build it, they will come.",
+    "Field of Dreams — the line is 'he will come'", "QUOTE"
+  },
+  {
+    "Blood is thicker than water.",
+    "The full proverb means the opposite. You are welcome.", "QUOTE"
+  },
+  {
+    "Mirror, mirror on the wall, who is the fairest of them all?",
+    "Snow White — it is 'Magic mirror on the wall'", "QUOTE"
+  },
+  {
+    "I think, therefore I am.",
+    "Rene Descartes — after doubting the existence of everything, including himself", "QUOTE"
+  },
+  {
+    "To be, or not to be, that is the question.",
+    "Shakespeare, Hamlet — Hamlet never receives an answer", "QUOTE"
+  },
+  {
+    "The only thing we have to fear is fear itself.",
+    "Franklin D. Roosevelt — he also had quite a lot to say about the economy", "QUOTE"
+  },
+  {
+    "Float like a butterfly, sting like a bee.",
+    "Muhammad Ali — also sound tactical advice for most conflicts", "QUOTE"
+  },
+  {
+    "Be yourself; everyone else is already taken.",
+    "Oscar Wilde, allegedly — he probably did not say this", "QUOTE"
+  },
+  {
+    "The reports of my death are greatly exaggerated.",
+    "Mark Twain — he wrote 'the report... was an exaggeration'", "QUOTE"
+  },
+  {
+    "That's one small step for man, one giant leap for mankind.",
+    "Neil Armstrong — he meant 'for a man'; the 'a' was inaudible", "QUOTE"
+  },
+  {
+    "The pen is mightier than the sword.",
+    "Bulwer-Lytton — who also wrote the worst opening sentence in literature", "QUOTE"
+  },
+  {
+    "Not all those who wander are lost.",
+    "J.R.R. Tolkien — some of them are definitely lost", "QUOTE"
+  },
+  {
+    "It was a dark and stormy night; the rain fell in torrents.",
+    "Edward Bulwer-Lytton — widely considered the worst opening sentence ever published", "QUOTE"
+  },
+  {
+    "In this world nothing can be said to be certain, except death and taxes.",
+    "Benjamin Franklin — he found this so depressing he wrote it in a letter", "QUOTE"
+  },
+  {
+    "Well-behaved women seldom make history.",
+    "Laurel Thatcher Ulrich — originally a footnote in an academic paper", "QUOTE"
+  },
+  {
+    "I am not afraid of an army of lions led by a sheep; I am afraid of an army of sheep led by a lion.",
+    "Attributed to Alexander the Great — almost certainly not him", "QUOTE"
+  },
+  {
+    "It is a truth universally acknowledged that a single man in possession of a good fortune must be in want of a wife.",
+    "Jane Austen, Pride and Prejudice — she was being sarcastic", "QUOTE"
+  },
+  {
+    "All animals are equal, but some animals are more equal than others.",
+    "George Orwell, Animal Farm — intended as satire; adopted as policy", "QUOTE"
+  },
+  {
+    "Power tends to corrupt, and absolute power corrupts absolutely.",
+    "Lord Acton, 1887 — a historian, not speaking hypothetically", "QUOTE"
+  },
+  {
+    "Ask not what your country can do for you; ask what you can do for your country.",
+    "John F. Kennedy — the answer to the second question was not relaxing", "QUOTE"
+  },
+  {
+    "In the beginning God created the heavens and the earth.",
+    "Genesis 1:1 — subsequent events are disputed", "QUOTE"
+  },
+  {
+    "The only way to do great work is to love what you do.",
+    "Steve Jobs — he also had an extensive legal and marketing team", "QUOTE"
+  },
+  {
+    "History is written by the victors.",
+    "Widely misattributed to Churchill — it was not him", "QUOTE"
+  },
+  {
+    "We have nothing to fear but fear itself. And spiders. But mainly fear.",
+    "Franklin D. Roosevelt (amended by popular consensus)", "QUOTE"
+  },
+  {
+    "I have a dream.",
+    "Martin Luther King Jr. — the full speech had considerably more detail", "QUOTE"
+  },
 }
 
 -- ============================================================
@@ -312,6 +445,7 @@ local CATEGORY_COLOUR = {
   ["DID YOU KNOW"] = colours.cyan,
   WISDOM           = colours.lime,
   LOADING          = colours.lightGrey,
+  QUOTE            = colours.orange,
   PLAYER           = colours.pink,
 }
 
@@ -467,22 +601,63 @@ local function musicLoop(spk)
 end
 
 -- ============================================================
--- Chat capture loop (requires Advanced Peripherals Chat Box)
--- Event signature: "chat", username, message, uuid, isHidden
+-- Chat Box detection
+-- Advanced Peripherals has shipped the Chat Box under several
+-- different peripheral type strings across versions. We try them
+-- all, then fall back to a substring scan of all attached peripherals.
+-- The user can also pin a specific side/name via CHAT_BOX_NAME.
 -- ============================================================
+local CHAT_EVENT_NAMES = { "chat", "chat_message" }  -- AP has used both
+
+local function findChatBox()
+  if CHAT_BOX_NAME ~= "" then
+    return peripheral.wrap(CHAT_BOX_NAME)
+  end
+  for _, typeName in ipairs({ "chatBox", "chat_box", "chatbox" }) do
+    local p = peripheral.find(typeName)
+    if p then return p end
+  end
+  -- Last resort: scan every attached peripheral for "chat" in the type name
+  for _, name in ipairs(peripheral.getNames()) do
+    local t = peripheral.getType(name)
+    if type(t) == "string" and t:lower():find("chat", 1, true) then
+      return peripheral.wrap(name)
+    end
+  end
+  return nil
+end
+
+-- ============================================================
+-- Chat capture loop (requires Advanced Peripherals Chat Box)
+-- Listens for both "chat" and "chat_message" events so the script
+-- works across different Advanced Peripherals version strings.
+-- ============================================================
+local function isChatEvent(name)
+  for _, n in ipairs(CHAT_EVENT_NAMES) do
+    if n == name then return true end
+  end
+  return false
+end
+
 local function chatLoop()
-  local box = peripheral.find("chatBox")
+  local box = findChatBox()
   if not box then
     while true do os.sleep(60) end
   end
 
   while true do
-    local _, user, msg = os.pullEvent("chat")
-    if type(msg) == "string"
-      and #msg >= MIN_MSG_LEN
-      and msg:sub(1, 1) ~= "/"
-      and msg:sub(1, 1) ~= "!" then
-      addChatQuote(user, msg)
+    -- No event filter: we wake on every event and check the name ourselves
+    -- so we catch whichever string Advanced Peripherals happens to fire.
+    local ev = {os.pullEvent()}
+    if isChatEvent(ev[1]) then
+      local user = ev[2]
+      local msg  = ev[3]
+      if type(user) == "string" and type(msg) == "string"
+        and #msg >= MIN_MSG_LEN
+        and msg:sub(1, 1) ~= "/"
+        and msg:sub(1, 1) ~= "!" then
+        addChatQuote(user, msg)
+      end
     end
   end
 end
@@ -496,26 +671,46 @@ local function main()
   math.randomseed(os.epoch("utc"))
   state.quoteIdx = math.random(#allQuotes)
 
-  -- Monitor (required)
+  -- ── Peripheral diagnostics ────────────────────────────────
+  local attached = peripheral.getNames()
+  print("quote-board: attached peripherals (" .. #attached .. ")")
+  for _, name in ipairs(attached) do
+    print("  " .. name .. " -> " .. tostring(peripheral.getType(name)))
+  end
+  if #attached == 0 then
+    print("  (none)")
+  end
+  print("")
+
+  -- ── Monitor (required) ────────────────────────────────────
   local mon = peripheral.find("monitor")
   assert(mon, "No monitor found. Attach an Advanced Monitor and reboot.")
   assert(mon.isColour(), "Monitor must be an Advanced (colour) Monitor.")
   mon.setTextScale(MONITOR_SCALE)
 
-  -- Speaker (optional)
+  -- ── Speaker (optional) ────────────────────────────────────
   local spk = peripheral.find("speaker")
   if not spk then
-    print("[WARN] No speaker — music disabled.")
+    print("[WARN] No speaker found — music disabled.")
   end
 
-  -- Chat Box (optional, requires Advanced Peripherals)
-  if not peripheral.find("chatBox") then
-    print("[WARN] No chatBox — chat capture disabled.")
-    print("       Install Advanced Peripherals for this feature.")
+  -- ── Chat Box (optional, requires Advanced Peripherals) ────
+  local box = findChatBox()
+  if not box then
+    print("[WARN] No Chat Box found — chat capture disabled.")
+    print("       Tried types: chatBox, chat_box, chatbox")
+    if CHAT_BOX_NAME ~= "" then
+      print("       Also tried CHAT_BOX_NAME = '" .. CHAT_BOX_NAME .. "'")
+    else
+      print("       Set CHAT_BOX_NAME in config to specify a side/name manually.")
+    end
+  else
+    print("[OK]  Chat Box detected.")
   end
 
-  if not spk or not peripheral.find("chatBox") then
-    os.sleep(2)  -- let warnings be read
+  local hasWarnings = not spk or not box
+  if hasWarnings then
+    os.sleep(3)  -- give the player time to read warnings
   end
 
   parallel.waitForAll(

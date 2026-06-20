@@ -51,6 +51,7 @@ The Advanced Monitor cycles through quotes every 15 seconds (configurable). Each
 | `[ DID YOU KNOW ]` | Cyan | Comedically incorrect facts |
 | `[ WISDOM ]` | Lime | Motivational but undercut by reality |
 | `[ LOADING ]` | Light grey | Meta/loading-screen humour |
+| `[ QUOTE ]` | Orange | Real-life misquotations and famous lines taken slightly out of context |
 | `[ PLAYER ]` | Pink | Captured verbatim from player chat |
 
 ### Elevator Music
@@ -69,13 +70,19 @@ Songs cycle continuously without gaps. The currently playing track name is shown
 
 ### Chat Capture
 
-When a Chat Box peripheral is attached, the script listens for the `chat` event (fired by Advanced Peripherals whenever a player sends a message). Messages that pass the filter are saved and added to the quote rotation immediately:
+When a Chat Box peripheral is attached, the script automatically captures player messages and adds them to the quote rotation under the `[ PLAYER ]` category.
 
-- Minimum length: 10 characters (configurable)
+**Detection** — the script tries several peripheral type strings that Advanced Peripherals has used across versions (`chatBox`, `chat_box`, `chatbox`) and also falls back to scanning all attached peripherals for any type name containing "chat". On startup, every attached peripheral is printed to the terminal so you can see exactly what was found.
+
+**Events** — the script listens for both `"chat"` and `"chat_message"` event names (Advanced Peripherals has shipped both). You do not need to know which one your version uses.
+
+**Manual override** — if auto-detection still fails, set `CHAT_BOX_NAME` in the config section to the exact peripheral side or name shown in the startup diagnostics (e.g. `"left"`, `"peripheral_0"`).
+
+**Message filter:**
+- Minimum length: 10 characters (configurable via `MIN_MSG_LEN`)
 - Ignored: messages starting with `/` (commands) or `!` (bot prefixes)
-- Attributed to the player's username under the `[ PLAYER ]` category
 
-Captured quotes are stored persistently in `quote-board-chat.dat` (a serialised Lua table) so they survive reboots. Up to 50 chat quotes are kept; the oldest is dropped when the limit is reached.
+Captured quotes are stored persistently in `quote-board-chat.dat` so they survive reboots. Up to 50 are kept; the oldest is dropped when the limit is reached.
 
 ## Monitor Setup
 
@@ -101,6 +108,7 @@ Open `quote-board.lua` in the editor (`edit quote-board.lua`) and change the val
 | `CHAT_FILE` | `"quote-board-chat.dat"` | File where chat quotes are saved |
 | `MAX_CHAT_QUOTES` | `50` | Maximum chat quotes to keep |
 | `MIN_MSG_LEN` | `10` | Minimum chat message length to capture |
+| `CHAT_BOX_NAME` | `""` | Force a specific peripheral side/name for the Chat Box (blank = auto) |
 
 ## Adding More Built-in Quotes
 
@@ -110,7 +118,13 @@ Add entries to the `BUILTIN_QUOTES` table inside `quote-board.lua`. Each entry i
 { "Your quote text here.", "Attribution", "CATEGORY" },
 ```
 
-Valid categories: `"TIP"`, `"DID YOU KNOW"`, `"WISDOM"`, `"LOADING"` (or any new string — just add a colour for it in `CATEGORY_COLOUR`).
+Valid categories: `"TIP"`, `"DID YOU KNOW"`, `"WISDOM"`, `"LOADING"`, `"QUOTE"` (or any new string — just add a colour for it in `CATEGORY_COLOUR`).
+
+The `"QUOTE"` category is intended for real-life quotes, famous misquotations, and lines taken slightly out of context. Attribution format is `"Person/Source — brief clarification"`, e.g.:
+
+```lua
+{ "Elementary, my dear Watson.", "Sherlock Holmes — never written by Doyle", "QUOTE" },
+```
 
 ## Adding More Music
 
