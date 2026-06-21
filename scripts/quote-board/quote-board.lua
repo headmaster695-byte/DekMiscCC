@@ -28,6 +28,7 @@ local H  = "harp"
 local F  = "flute"
 local CH = "chime"
 local BL = "bell"
+local BA = "bass"
 local XY = "xylophone"
 local PL = "pling"
 
@@ -442,6 +443,55 @@ local SONGS = {
       {H,  1.2, 15, 0.25}, {H,  1.4, 13, 2.00},
     },
   },
+
+  -- ── Polyphonic demo ────────────────────────────────────────────────────────
+  -- "Moonlight Hollow" — three independent voices designed to run on three
+  -- separate speakers simultaneously. The voices are declared in a `voices`
+  -- table rather than the single-voice `notes` table used by all other songs.
+  --   Voice 1 → Speaker 1 (melody,   Harp)
+  --   Voice 2 → Speaker 2 (harmony,  Chime — slow arpeggios)
+  --   Voice 3 → Speaker 3 (bass,     Bass instrument — one note per chord)
+  -- With a single speaker all three voices share it and interleave, which
+  -- still sounds musical but is not true polyphony.
+  -- Key: E minor. Duration: ~18 s per loop.
+  {
+    name   = "Moonlight Hollow",
+    voices = {
+      { -- ── Voice 1: melody (Harp) ──────────────────────────────────────
+        notes = {
+          -- Phrase 1 (Em): gentle ascent then descent
+          {H, 0.9, 10, 0.50}, {H, 0.8, 13, 0.45}, {H, 0.8, 15, 0.45},
+          {H, 0.9, 17, 0.60}, {H, 0.8, 15, 0.40}, {H, 0.8, 13, 0.40}, {H, 0.9, 10, 0.70},
+          -- Phrase 2 (D/Bm): reach up to E5
+          {H, 0.9, 17, 0.55}, {H, 0.9, 20, 0.50}, {H, 1.0, 22, 0.65},
+          {H, 0.9, 20, 0.45}, {H, 0.9, 17, 0.80},
+          -- Phrase 3 (C→G): stepwise fall
+          {H, 0.8, 13, 0.50}, {H, 0.8, 15, 0.45}, {H, 0.9, 17, 0.45},
+          {H, 0.8, 15, 0.40}, {H, 0.8, 13, 0.40}, {H, 0.9, 10, 0.90},
+          -- Phrase 4 (Em): arch back to rest on low E
+          {H, 0.9, 10, 0.50}, {H, 0.8, 13, 0.45}, {H, 0.9, 17, 0.50},
+          {H, 0.9, 20, 0.50}, {H, 0.8, 17, 0.40}, {H, 0.8, 13, 0.40},
+          {H, 0.9, 10, 2.00},
+        },
+      },
+      { -- ── Voice 2: harmony (Chime) — slow arpeggios, one chord per phrase ─
+        notes = {
+          {CH, 0.5, 10, 0.35}, {CH, 0.5, 13, 0.35}, {CH, 0.6, 17, 0.35}, {CH, 0.6, 22, 3.50},  -- Em
+          {CH, 0.5,  8, 0.35}, {CH, 0.5, 12, 0.35}, {CH, 0.6, 15, 0.35}, {CH, 0.6, 20, 3.50},  -- D
+          {CH, 0.5,  6, 0.35}, {CH, 0.5, 10, 0.35}, {CH, 0.6, 13, 0.35}, {CH, 0.6, 18, 3.50},  -- C
+          {CH, 0.5,  5, 0.35}, {CH, 0.5,  8, 0.35}, {CH, 0.6, 12, 0.35}, {CH, 0.6, 17, 3.50},  -- Bm
+        },
+      },
+      { -- ── Voice 3: bass (Bass instrument) — root note per chord ────────────
+        notes = {
+          {BA, 0.8, 10, 4.55},  -- E  (root of Em)
+          {BA, 0.8,  8, 4.55},  -- D
+          {BA, 0.8,  6, 4.55},  -- C
+          {BA, 0.8,  5, 4.55},  -- B
+        },
+      },
+    },
+  },
 }
 
 -- ============================================================
@@ -740,9 +790,10 @@ local BUILTIN_QUOTES = {
 local allQuotes  = {}
 local chatQuotes = {}
 local state = {
-  songName = "—",
-  quoteIdx = 1,
-  chatCount = 0,
+  songName     = "—",
+  quoteIdx     = 1,
+  chatCount    = 0,
+  speakerCount = 0,   -- updated by main() after speaker scan
 }
 
 -- ============================================================
@@ -904,7 +955,10 @@ local function drawScreen(mon, quote)
   local chatLabel = state.chatCount > 0
     and (" | chat: " .. state.chatCount .. " quote" .. (state.chatCount == 1 and "" or "s"))
     or ""
-  local musicLine = "  * " .. state.songName .. chatLabel
+  local spkLabel  = state.speakerCount > 1
+    and (" | " .. state.speakerCount .. " spkrs")
+    or ""
+  local musicLine = "  * " .. state.songName .. spkLabel .. chatLabel
   mon.setCursorPos(1, h)
   mon.write(musicLine:sub(1, w))
 
@@ -927,15 +981,78 @@ local function displayLoop(mon)
 end
 
 -- ============================================================
+-- Speaker discovery
+-- Scans every attached peripheral (including wired-modem remotes)
+-- for the "speaker" type. Returns a table of wrapped peripherals.
+-- ============================================================
+local function findAllSpeakers()
+  local found = {}
+  for _, name in ipairs(peripheral.getNames()) do
+    if peripheral.getType(name) == "speaker" then
+      table.insert(found, peripheral.wrap(name))
+    end
+  end
+  -- Fallback: peripheral.find() as a safety net in case the type
+  -- string differs slightly in some CC:T builds
+  if #found == 0 then
+    local spk = peripheral.find("speaker")
+    if spk then table.insert(found, spk) end
+  end
+  return found
+end
+
+-- ============================================================
+-- Polyphonic song helpers
+-- ============================================================
+
+-- Normalise song format: both single-voice (`notes`) and multi-voice
+-- (`voices`) songs return a list of voice tables { notes = {...} }.
+local function getSongVoices(song)
+  if song.voices then return song.voices end
+  if song.notes  then return { { notes = song.notes } } end
+  return {}
+end
+
+-- Play all voices of a song in parallel, distributing them across the
+-- available speakers in round-robin order.
+--   1 speaker  → all voices share it (notes interleave cooperatively)
+--   2 speakers → voice 1 on spk 1, voice 2 on spk 2, voice 3 on spk 1 …
+--   N speakers → ideal when #speakers == #voices
+-- The function returns when the longest voice finishes.
+local function playSong(song, speakers)
+  local voices = getSongVoices(song)
+  if #voices == 0 or #speakers == 0 then return end
+
+  local tasks = {}
+  for i, voice in ipairs(voices) do
+    local spk   = speakers[(i - 1) % #speakers + 1]
+    local notes = voice.notes
+    tasks[#tasks + 1] = function()
+      for _, note in ipairs(notes) do
+        local ok = spk.playNote(note[1], note[2], note[3])
+        if not ok then
+          os.sleep(0.05)
+          spk.playNote(note[1], note[2], note[3])
+        end
+        os.sleep(note[4])
+      end
+    end
+  end
+
+  parallel.waitForAll(table.unpack(tasks))
+end
+
+-- ============================================================
 -- Music loop — cycles through SONGS indefinitely
 -- ============================================================
-local function musicLoop(spk)
-  if not spk then
+-- speakers: table of wrapped speaker peripherals (may be empty)
+-- SONGS[1] always plays first; all subsequent picks are random with
+-- no back-to-back repeats.
+local function musicLoop(speakers)
+  if #speakers == 0 then
     while true do os.sleep(60) end
   end
 
-  -- SONGS[1] (the title track) always plays first.
-  -- All subsequent picks are random, never repeating the same song back-to-back.
   local isFirst = true
   local lastIdx = 0
 
@@ -954,15 +1071,7 @@ local function musicLoop(spk)
     local song = SONGS[idx]
     state.songName = song.name
 
-    for _, note in ipairs(song.notes) do
-      local ok = spk.playNote(note[1], note[2], note[3])
-      if not ok then
-        -- Hit the 8-notes/tick limit; wait one tick and retry
-        os.sleep(0.05)
-        spk.playNote(note[1], note[2], note[3])
-      end
-      os.sleep(note[4])
-    end
+    playSong(song, speakers)
   end
 end
 
@@ -1054,10 +1163,18 @@ local function main()
   assert(mon.isColour(), "Monitor must be an Advanced (colour) Monitor.")
   mon.setTextScale(MONITOR_SCALE)
 
-  -- ── Speaker (optional) ────────────────────────────────────
-  local spk = peripheral.find("speaker")
-  if not spk then
-    print("[WARN] No speaker found — music disabled.")
+  -- ── Speakers (optional) — scan for all connected speakers ─
+  local speakers = findAllSpeakers()
+  state.speakerCount = #speakers
+
+  if #speakers == 0 then
+    print("[WARN] No speakers found — music disabled.")
+    print("       Attach speakers directly or via wired modem.")
+  elseif #speakers == 1 then
+    print("[OK]  1 speaker found (monophonic).")
+  else
+    print("[OK]  " .. #speakers .. " speakers found — polyphonic enabled.")
+    print("       Songs with multiple voices will use " .. #speakers .. " channels.")
   end
 
   -- ── Chat Box (optional, requires Advanced Peripherals) ────
@@ -1074,14 +1191,14 @@ local function main()
     print("[OK]  Chat Box detected.")
   end
 
-  local hasWarnings = not spk or not box
+  local hasWarnings = #speakers == 0 or not box
   if hasWarnings then
-    os.sleep(3)  -- give the player time to read warnings
+    os.sleep(3)
   end
 
   parallel.waitForAll(
     function() displayLoop(mon) end,
-    function() musicLoop(spk) end,
+    function() musicLoop(speakers) end,
     function() chatLoop() end
   )
 end
@@ -1089,8 +1206,13 @@ end
 -- Ensure terminal is always restored on exit (including Ctrl+T)
 local ok, err = pcall(main)
 
-local spk = peripheral.find("speaker")
-if spk then spk.stop() end
+-- Stop every speaker that was playing
+for _, pName in ipairs(peripheral.getNames()) do
+  if peripheral.getType(pName) == "speaker" then
+    local s = peripheral.wrap(pName)
+    if s then s.stop() end
+  end
+end
 
 term.setBackgroundColour(colours.black)
 term.setTextColour(colours.white)
