@@ -6,35 +6,51 @@
 --
 -- Usage: quote-board
 -- Requires (same directory): songs.lua, quotes.lua
--- Peripherals:
---   Advanced Monitor  — required
---   Speaker(s)        — optional (adjacent or wired modem)
---   Chat Box          — optional (Advanced Peripherals)
 --
--- Controls (computer keyboard):
---   R  next quote     N  skip song     M  mute/unmute     Q  quit
--- Monitor touch also advances the quote.
+-- Controls:
+--   R next quote     P previous      Space pause/resume quotes
+--   N skip song      M mute/unmute   -/= volume down/up
+--   C category filter  L playlist     H help overlay
+--   Q quit           Monitor touch = next quote
+-- Chat commands (prefix '#'):
+--   #next #prev #pause #skip #mute #vol <0-100> #cat #playlist #help #stats
 
 -- ============================================================
 -- Configuration
 -- ============================================================
-local QUOTE_INTERVAL      = 15     -- seconds between automatic quote changes
+local BOARD_TITLE         = "MOTIVATIONAL CORNER"
+local QUOTE_INTERVAL      = 15
 local MONITOR_SCALE       = 0.5
 local CHAT_FILE           = "quote-board-chat.dat"
+local SETTINGS_FILE       = "quote-board-settings.dat"
 local MAX_CHAT_QUOTES     = 50
 local MIN_MSG_LEN         = 10
-local CHAT_BOX_NAME       = ""     -- e.g. "left"; blank = auto-detect
-local DIFF_CAT_WEIGHT     = 4      -- weight for quotes in a different category
-local SAME_CAT_WEIGHT     = 1      -- weight for quotes in the same category
-local PLAYER_CAT_WEIGHT   = 6      -- weight for PLAYER quotes (cross-category)
-local TITLE_SONG_IDX      = 1      -- SONGS index that always plays first
-local MUSIC_START_ON      = true   -- start with music unmuted
-local FRESH_CHAT_FOCUS    = true   -- jump to newly captured chat quotes
-local TOUCH_ADVANCES      = true   -- monitor touch -> next quote
-local UI_TICK             = 0.25   -- display refresh granularity (seconds)
+local CHAT_BOX_NAME       = ""
+local CHAT_CMD_PREFIX     = "#"
+local DIFF_CAT_WEIGHT     = 4
+local SAME_CAT_WEIGHT     = 1
+local PLAYER_CAT_WEIGHT   = 6
+local TITLE_SONG_IDX      = 1
+local MUSIC_START_ON      = true
+local FRESH_CHAT_FOCUS    = true
+local TOUCH_ADVANCES      = true
+local MIRROR_ALL_MONITORS = true
+local SHOW_CLOCK          = true
+local SHOW_PROGRESS_BAR   = true
+local AUTO_SCROLL         = true
+local SCROLL_SECONDS      = 2.5
+local UI_TICK             = 0.25
+local DEFAULT_VOLUME      = 1.0          -- 0.0 – 1.0 multiplier
+local QUOTE_TICK_SOUND    = true         -- soft click on quote change
+local HELP_SECONDS        = 8
+
+-- Players whose chat is never captured (case-sensitive names)
+local IGNORE_PLAYERS = {
+  -- ["SomeBot"] = true,
+}
 
 -- ============================================================
--- Data modules (songs.lua + quotes.lua next to this script)
+-- Data modules
 -- ============================================================
 local SONGS, BUILTIN_QUOTES
 
@@ -58,31 +74,78 @@ do
 end
 
 -- ============================================================
+-- Categories / playlists
+-- ============================================================
+local CATEGORY_ORDER = {
+  "ALL", "TIP", "DID YOU KNOW", "WISDOM", "LOADING", "QUOTE", "PLAYER",
+}
+
+local PLAYLIST_ORDER = { "all", "elevator", "zelda", "original", "title" }
+local PLAYLIST_LABEL = {
+  all       = "All tracks",
+  elevator  = "Elevator",
+  zelda     = "Zelda-inspired",
+  original  = "Originals",
+  title     = "Title only",
+}
+
+local function songPlaylist(idx, song)
+  if idx == TITLE_SONG_IDX then return "title" end
+  local n = (song.name or ""):lower()
+  if n:find("temple", 1, true) or n:find("kokiri", 1, true) or n:find("moonlight", 1, true) then
+    return "original"
+  end
+  if n:find("forest", 1, true) or n:find("zora", 1, true) or n:find("gerudo", 1, true)
+    or n:find("lon lon", 1, true) or n:find("tempest", 1, true) or n:find("great sea", 1, true) then
+    return "zelda"
+  end
+  return "elevator"
+end
+
+-- ============================================================
 -- Shared state
 -- ============================================================
 local allQuotes  = {}
 local chatQuotes = {}
 local speakers   = {}
+local monitors   = {}
 
 local state = {
-  running      = true,
-  songName     = "—",
-  quoteIdx     = 1,
-  chatCount    = 0,
-  speakerCount = 0,
-  musicOn      = MUSIC_START_ON,
-  skipSong     = false,
-  dirty        = true,
-  nextQuoteAt  = 0,
-  flashUntil   = 0,
-  flashText    = "",
-  hasChatBox   = false,
+  running       = true,
+  songName      = "—",
+  quoteIdx      = 1,
+  chatCount     = 0,
+  speakerCount  = 0,
+  musicOn       = MUSIC_START_ON,
+  volume        = DEFAULT_VOLUME,
+  skipSong      = false,
+  dirty         = true,
+  nextQuoteAt   = 0,
+  flashUntil    = 0,
+  flashText     = "",
+  hasChatBox    = false,
+  paused        = false,
+  helpUntil     = 0,
+  categoryFilter= "ALL",
+  playlist      = "all",
+  history       = {},           -- previous quote indices
+  scrollOffset  = 0,
+  scrollAt      = 0,
+  bodyLines     = 0,
+  bodyHeight    = 0,
+  quotesShown   = 0,
+  chatCaptured  = 0,
+  startedAt     = 0,
+  lastTickIdx   = nil,
 }
 
 local CHAT_EVENT_NAMES = { chat = true, chat_message = true }
 
+-- Shuffle bag of song indices for current playlist
+local songBag = {}
+
 -- ============================================================
--- Speakers
+-- Speakers / monitors
 -- ============================================================
 local function findAllSpeakers()
   local found = {}
@@ -94,6 +157,25 @@ local function findAllSpeakers()
   if #found == 0 then
     local spk = peripheral.find("speaker")
     if spk then found[1] = spk end
+  end
+  return found
+end
+
+local function findMonitors()
+  local found = {}
+  for _, name in ipairs(peripheral.getNames()) do
+    if peripheral.getType(name) == "monitor" then
+      local mon = peripheral.wrap(name)
+      if mon and mon.isColour and mon.isColour() then
+        found[#found + 1] = mon
+      end
+    end
+  end
+  if #found == 0 then
+    local mon = peripheral.find("monitor")
+    if mon and mon.isColour and mon.isColour() then
+      found[1] = mon
+    end
   end
   return found
 end
@@ -111,6 +193,54 @@ local function stopAllSpeakers()
       if s then pcall(s.stop) end
     end
   end
+end
+
+local function playTick()
+  if not QUOTE_TICK_SOUND or #speakers == 0 or not state.musicOn then return end
+  local spk = speakers[1]
+  local vol = math.max(0.05, 0.2 * state.volume)
+  pcall(spk.playNote, "hat", vol, 18)
+end
+
+-- ============================================================
+-- Settings persistence
+-- ============================================================
+local function loadSettings()
+  if not fs.exists(SETTINGS_FILE) then return end
+  local f = fs.open(SETTINGS_FILE, "r")
+  if not f then return end
+  local raw = f.readAll()
+  f.close()
+  local ok, data = pcall(textutils.unserialise, raw)
+  if not ok or type(data) ~= "table" then return end
+  if type(data.musicOn) == "boolean" then state.musicOn = data.musicOn end
+  if type(data.volume) == "number" then
+    state.volume = math.max(0, math.min(1, data.volume))
+  end
+  if type(data.playlist) == "string" and PLAYLIST_LABEL[data.playlist] then
+    state.playlist = data.playlist
+  end
+  if type(data.categoryFilter) == "string" then
+    for _, c in ipairs(CATEGORY_ORDER) do
+      if c == data.categoryFilter then
+        state.categoryFilter = c
+        break
+      end
+    end
+  end
+end
+
+local function saveSettings()
+  local data = {
+    musicOn = state.musicOn,
+    volume = state.volume,
+    playlist = state.playlist,
+    categoryFilter = state.categoryFilter,
+  }
+  local f = fs.open(SETTINGS_FILE, "w")
+  if not f then return end
+  f.write(textutils.serialise(data))
+  f.close()
 end
 
 -- ============================================================
@@ -151,19 +281,26 @@ end
 
 local function isDuplicateChat(msg)
   for i = #chatQuotes, math.max(1, #chatQuotes - 19), -1 do
-    if chatQuotes[i][1] == msg then
-      return true
-    end
+    if chatQuotes[i][1] == msg then return true end
   end
   return false
 end
 
 local function scheduleNextQuote(seconds)
   state.nextQuoteAt = os.epoch("utc") + math.floor((seconds or QUOTE_INTERVAL) * 1000)
+  state.scrollOffset = 0
+  state.scrollAt = os.epoch("utc") + math.floor(SCROLL_SECONDS * 1000)
+  state.dirty = true
+end
+
+local function flash(msg, ms)
+  state.flashText = msg
+  state.flashUntil = os.epoch("utc") + (ms or 3000)
   state.dirty = true
 end
 
 local function addChatQuote(user, msg)
+  if IGNORE_PLAYERS[user] then return false end
   if isDuplicateChat(msg) then return false end
 
   if #chatQuotes >= MAX_CHAT_QUOTES then
@@ -172,29 +309,23 @@ local function addChatQuote(user, msg)
   chatQuotes[#chatQuotes + 1] = { msg, user, "PLAYER" }
   saveChatQuotes()
   rebuildAllQuotes()
+  state.chatCaptured = state.chatCaptured + 1
 
   if FRESH_CHAT_FOCUS and #allQuotes > 0 then
+    state.history[#state.history + 1] = state.quoteIdx
+    if #state.history > 40 then table.remove(state.history, 1) end
     state.quoteIdx = #allQuotes
+    state.quotesShown = state.quotesShown + 1
     scheduleNextQuote(QUOTE_INTERVAL)
+    playTick()
   end
 
-  state.flashText = "LIVE: " .. user
-  state.flashUntil = os.epoch("utc") + 4000
-  state.dirty = true
+  flash("LIVE: " .. user, 4000)
   return true
 end
 
-local function tryCaptureChat(user, msg)
-  if not state.hasChatBox then return end
-  if type(user) ~= "string" or type(msg) ~= "string" then return end
-  if #msg < MIN_MSG_LEN then return end
-  local first = msg:sub(1, 1)
-  if first == "/" or first == "!" then return end
-  addChatQuote(user, msg)
-end
-
 -- ============================================================
--- Display
+-- Display helpers
 -- ============================================================
 local CATEGORY_COLOUR = {
   TIP              = colours.yellow,
@@ -227,13 +358,89 @@ local function centre(text, width)
 end
 
 local function secondsLeft()
+  if state.paused then return -1 end
   local ms = state.nextQuoteAt - os.epoch("utc")
   if ms <= 0 then return 0 end
   return math.ceil(ms / 1000)
 end
 
-local function drawScreen(mon, quote)
+local function uptimeString()
+  local sec = math.floor((os.epoch("utc") - state.startedAt) / 1000)
+  local m = math.floor(sec / 60)
+  local s = sec % 60
+  if m >= 60 then
+    local h = math.floor(m / 60)
+    m = m % 60
+    return string.format("%dh%02dm", h, m)
+  end
+  return string.format("%dm%02ds", m, s)
+end
+
+local function clockString()
+  -- CC:T provides os.date compatible formatting on most versions
+  local ok, text = pcall(os.date, "%H:%M")
+  if ok and type(text) == "string" then return text end
+  return ""
+end
+
+local function progressFraction()
+  if state.paused or QUOTE_INTERVAL <= 0 then return 0 end
+  local left = state.nextQuoteAt - os.epoch("utc")
+  local total = QUOTE_INTERVAL * 1000
+  local done = 1 - (left / total)
+  if done < 0 then return 0 end
+  if done > 1 then return 1 end
+  return done
+end
+
+local function drawHelp(mon, w, h)
+  mon.setBackgroundColour(colours.black)
+  mon.setTextColour(colours.white)
+  mon.clear()
+  mon.setCursorPos(1, 1)
+  mon.setBackgroundColour(colours.grey)
+  mon.setTextColour(colours.yellow)
+  mon.clearLine()
+  mon.write(centre("CONTROLS", w))
+  mon.setBackgroundColour(colours.black)
+
+  local lines = {
+    "R next     P previous",
+    "Space pause quotes",
+    "N skip song   M mute",
+    "- / =  volume",
+    "C category filter",
+    "L playlist filter",
+    "H help   Q quit",
+    "Touch monitor = next",
+    "",
+    "Chat: #next #skip #mute",
+    "      #vol 50 #pause",
+    "      #cat #playlist",
+    "",
+    "Up " .. uptimeString()
+      .. "  shown " .. state.quotesShown,
+    "Chat +" .. state.chatCaptured
+      .. "  vol " .. math.floor(state.volume * 100) .. "%",
+  }
+
+  for i, line in ipairs(lines) do
+    local row = i + 2
+    if row >= h then break end
+    mon.setTextColour(colours.lightGrey)
+    mon.setCursorPos(2, row)
+    mon.write(line:sub(1, w - 2))
+  end
+end
+
+local function drawScreenOn(mon, quote)
   local w, h = mon.getSize()
+
+  if os.epoch("utc") < state.helpUntil then
+    drawHelp(mon, w, h)
+    return
+  end
+
   local text, source, category = quote[1], quote[2], quote[3]
   local flashing = os.epoch("utc") < state.flashUntil
 
@@ -241,6 +448,7 @@ local function drawScreen(mon, quote)
   mon.setTextColour(colours.white)
   mon.clear()
 
+  -- Header
   mon.setCursorPos(1, 1)
   mon.setBackgroundColour(colours.grey)
   if flashing then
@@ -251,8 +459,24 @@ local function drawScreen(mon, quote)
   else
     mon.setTextColour(colours.yellow)
     mon.clearLine()
-    mon.setCursorPos(1, 1)
-    mon.write(centre("* MOTIVATIONAL CORNER *", w))
+    local title = "* " .. BOARD_TITLE .. " *"
+    if state.paused then title = "* PAUSED *" end
+    if SHOW_CLOCK then
+      local clk = clockString()
+      if clk ~= "" then
+        mon.setCursorPos(1, 1)
+        mon.write(centre(title, w))
+        mon.setTextColour(colours.white)
+        mon.setCursorPos(w - #clk + 1, 1)
+        mon.write(clk)
+      else
+        mon.setCursorPos(1, 1)
+        mon.write(centre(title, w))
+      end
+    else
+      mon.setCursorPos(1, 1)
+      mon.write(centre(title, w))
+    end
   end
   mon.setBackgroundColour(colours.black)
 
@@ -260,19 +484,29 @@ local function drawScreen(mon, quote)
   mon.setCursorPos(1, 2)
   mon.write(string.rep("-", w))
 
+  -- Category + filter hint
   mon.setTextColour(CATEGORY_COLOUR[category] or colours.white)
   mon.setCursorPos(2, 3)
   local catLabel = "[ " .. category .. " ]"
   if flashing and category == "PLAYER" then
     catLabel = "[ PLAYER · NEW ]"
   end
-  mon.write(catLabel)
+  if state.categoryFilter ~= "ALL" then
+    catLabel = catLabel .. " lock"
+  end
+  mon.write(catLabel:sub(1, math.max(1, w - 12)))
 
-  local countStr = string.format("next %ds", secondsLeft())
+  local right
+  if state.paused then
+    right = "PAUSED"
+  else
+    right = string.format("next %ds", secondsLeft())
+  end
   mon.setTextColour(colours.grey)
-  mon.setCursorPos(math.max(1, w - #countStr), 3)
-  mon.write(countStr)
+  mon.setCursorPos(math.max(1, w - #right), 3)
+  mon.write(right)
 
+  -- Body (with auto-scroll for tall quotes)
   mon.setTextColour(colours.white)
   local margin = 3
   local bodyW = math.max(8, w - margin * 2)
@@ -282,42 +516,84 @@ local function drawScreen(mon, quote)
     wrapped[#wrapped] = wrapped[#wrapped] .. "\xE2\x80\x9D"
   end
 
-  local bodyStart, bodyEnd = 5, h - 3
-  for i, line in ipairs(wrapped) do
-    local row = bodyStart + i - 1
-    if row > bodyEnd then break end
-    mon.setCursorPos(margin, row)
+  local bodyStart, bodyEnd = 5, h - 4
+  if bodyEnd < bodyStart then bodyEnd = bodyStart end
+  local bodyHeight = bodyEnd - bodyStart + 1
+  state.bodyLines = #wrapped
+  state.bodyHeight = bodyHeight
+
+  if AUTO_SCROLL and #wrapped > bodyHeight then
+    local maxOff = #wrapped - bodyHeight
+    if state.scrollOffset > maxOff then state.scrollOffset = maxOff end
+  else
+    state.scrollOffset = 0
+  end
+
+  for i = 1, bodyHeight do
+    local line = wrapped[i + state.scrollOffset]
+    if not line then break end
+    mon.setCursorPos(margin, bodyStart + i - 1)
     mon.write(line:sub(1, bodyW))
   end
 
+  if AUTO_SCROLL and #wrapped > bodyHeight then
+    mon.setTextColour(colours.grey)
+    mon.setCursorPos(w, bodyStart)
+    mon.write("^")
+    mon.setCursorPos(w, bodyEnd)
+    mon.write("v")
+  end
+
+  -- Attribution
   mon.setTextColour(colours.lightGrey)
   local attr = "— " .. source
-  local attrRow = math.min(bodyStart + #wrapped + 1, h - 2)
-  attrRow = math.max(attrRow, bodyStart + 1)
-  if attrRow < h - 1 then
+  local attrRow = h - 3
+  if attrRow > bodyStart then
     mon.setCursorPos(math.max(1, w - #attr - 1), attrRow)
     mon.write(attr:sub(1, w - 2))
   end
 
-  mon.setTextColour(colours.grey)
+  -- Progress bar / divider
   mon.setCursorPos(1, h - 1)
-  mon.write(string.rep("-", w))
+  if SHOW_PROGRESS_BAR and not state.paused then
+    local frac = progressFraction()
+    local filled = math.floor(w * frac + 0.5)
+    mon.setTextColour(colours.grey)
+    mon.write(string.rep("=", math.max(0, filled)))
+    mon.setTextColour(colours.grey)
+    mon.write(string.rep("-", math.max(0, w - filled)))
+  else
+    mon.setTextColour(colours.grey)
+    mon.write(string.rep(state.paused and "=" or "-", w))
+  end
 
+  -- Footer
   mon.setCursorPos(1, h)
   mon.setBackgroundColour(colours.grey)
   mon.clearLine()
   mon.setTextColour(state.musicOn and colours.green or colours.red)
 
-  local chatLabel = state.chatCount > 0 and (" | chat:" .. state.chatCount) or ""
-  local spkLabel = state.speakerCount > 1 and (" | " .. state.speakerCount .. "spk") or ""
-  local musicLabel
+  local volPct = math.floor(state.volume * 100 + 0.5)
+  local bits = {}
   if state.speakerCount == 0 then
-    musicLabel = "  * no speakers"
+    bits[#bits + 1] = "no speakers"
   elseif state.musicOn then
-    musicLabel = "  * " .. state.songName .. spkLabel .. chatLabel
+    bits[#bits + 1] = state.songName
   else
-    musicLabel = "  * MUTED" .. spkLabel .. chatLabel
+    bits[#bits + 1] = "MUTED"
   end
+  if state.speakerCount > 1 then
+    bits[#bits + 1] = state.speakerCount .. "spk"
+  end
+  if state.playlist ~= "all" then
+    bits[#bits + 1] = PLAYLIST_LABEL[state.playlist] or state.playlist
+  end
+  bits[#bits + 1] = volPct .. "%"
+  if state.chatCount > 0 then
+    bits[#bits + 1] = "chat:" .. state.chatCount
+  end
+
+  local musicLabel = "  * " .. table.concat(bits, " | ")
   mon.setCursorPos(1, h)
   mon.write(musicLabel:sub(1, w))
 
@@ -325,12 +601,33 @@ local function drawScreen(mon, quote)
   mon.setTextColour(colours.white)
 end
 
+local function drawAll(quote)
+  if not quote then return end
+  local list = monitors
+  if not MIRROR_ALL_MONITORS and #list > 0 then
+    list = { list[1] }
+  end
+  for _, mon in ipairs(list) do
+    local ok, err = pcall(drawScreenOn, mon, quote)
+    if not ok then
+      -- monitor may have been detached; ignore
+    end
+  end
+end
+
 -- ============================================================
 -- Quote selection
 -- ============================================================
+local function quoteMatchesFilter(q)
+  if state.categoryFilter == "ALL" then return true end
+  return q[3] == state.categoryFilter
+end
+
 local function weightFor(i, currentIdx, currentCat)
   if i == currentIdx then return 0 end
-  local cat = allQuotes[i][3]
+  local q = allQuotes[i]
+  if not quoteMatchesFilter(q) then return 0 end
+  local cat = q[3]
   if cat == "PLAYER" and cat ~= currentCat then
     return PLAYER_CAT_WEIGHT
   elseif cat == currentCat then
@@ -354,6 +651,15 @@ local function pickNextQuote(currentIdx)
   end
 
   if total == 0 then
+    -- Filter may be empty (e.g. PLAYER with no chat yet) — fall back to all
+    if state.categoryFilter ~= "ALL" then
+      local saved = state.categoryFilter
+      state.categoryFilter = "ALL"
+      local idx = pickNextQuote(currentIdx)
+      state.categoryFilter = saved
+      flash("No " .. saved .. " quotes", 2500)
+      return idx
+    end
     local pick = math.random(n)
     return pick ~= currentIdx and pick or (pick % n) + 1
   end
@@ -371,23 +677,77 @@ local function pickNextQuote(currentIdx)
   return lo
 end
 
-local function advanceQuote()
-  state.quoteIdx = pickNextQuote(state.quoteIdx)
-  scheduleNextQuote(QUOTE_INTERVAL)
+local function pushHistory(idx)
+  if not idx then return end
+  state.history[#state.history + 1] = idx
+  if #state.history > 40 then table.remove(state.history, 1) end
 end
 
--- ============================================================
--- Shared event handling
--- (music playback must not swallow chat/keys via filtered sleep)
--- ============================================================
-local function toggleMusic()
-  state.musicOn = not state.musicOn
-  if not state.musicOn then
-    state.skipSong = true
-    stopSpeakers()
-    state.songName = "muted"
+local function advanceQuote()
+  pushHistory(state.quoteIdx)
+  state.quoteIdx = pickNextQuote(state.quoteIdx)
+  state.quotesShown = state.quotesShown + 1
+  state.scrollOffset = 0
+  scheduleNextQuote(QUOTE_INTERVAL)
+  playTick()
+end
+
+local function previousQuote()
+  if #state.history == 0 then
+    flash("No history", 1500)
+    return
   end
-  state.dirty = true
+  state.quoteIdx = table.remove(state.history)
+  state.quotesShown = state.quotesShown + 1
+  state.scrollOffset = 0
+  scheduleNextQuote(QUOTE_INTERVAL)
+  playTick()
+end
+
+local function togglePause()
+  state.paused = not state.paused
+  if state.paused then
+    flash("PAUSED", 1500)
+  else
+    scheduleNextQuote(QUOTE_INTERVAL)
+    flash("RESUMED", 1500)
+  end
+end
+
+local function cycleCategory()
+  local idx = 1
+  for i, c in ipairs(CATEGORY_ORDER) do
+    if c == state.categoryFilter then idx = i break end
+  end
+  idx = (idx % #CATEGORY_ORDER) + 1
+  state.categoryFilter = CATEGORY_ORDER[idx]
+  saveSettings()
+  flash("Filter: " .. state.categoryFilter, 2000)
+  -- If current quote is wrong category, advance
+  local q = allQuotes[state.quoteIdx]
+  if q and not quoteMatchesFilter(q) then
+    advanceQuote()
+  end
+end
+
+local function refillSongBag()
+  songBag = {}
+  for i, song in ipairs(SONGS) do
+    local bucket = songPlaylist(i, song)
+    if state.playlist == "all" or bucket == state.playlist
+      or (state.playlist == "title" and i == TITLE_SONG_IDX) then
+      songBag[#songBag + 1] = i
+    end
+  end
+  -- Shuffle
+  for i = #songBag, 2, -1 do
+    local j = math.random(i)
+    songBag[i], songBag[j] = songBag[j], songBag[i]
+  end
+  if #songBag == 0 then
+    -- Never empty
+    songBag[1] = TITLE_SONG_IDX
+  end
 end
 
 local function requestSkipSong()
@@ -397,7 +757,115 @@ local function requestSkipSong()
   end
 end
 
--- Returns: "quit", "redraw", "abort_music", or nil
+local function cyclePlaylist()
+  local idx = 1
+  for i, p in ipairs(PLAYLIST_ORDER) do
+    if p == state.playlist then idx = i break end
+  end
+  idx = (idx % #PLAYLIST_ORDER) + 1
+  state.playlist = PLAYLIST_ORDER[idx]
+  refillSongBag()
+  saveSettings()
+  flash("Playlist: " .. (PLAYLIST_LABEL[state.playlist] or state.playlist), 2500)
+  requestSkipSong()
+end
+
+local function adjustVolume(delta)
+  state.volume = math.max(0, math.min(1, state.volume + delta))
+  saveSettings()
+  flash("Volume " .. math.floor(state.volume * 100 + 0.5) .. "%", 1500)
+end
+
+local function showHelp()
+  state.helpUntil = os.epoch("utc") + HELP_SECONDS * 1000
+  state.dirty = true
+end
+
+local function showStats()
+  flash(string.format(
+    "Up %s | %d shown | %d chat",
+    uptimeString(), state.quotesShown, state.chatCaptured
+  ), 3500)
+end
+
+local function toggleMusic()
+  state.musicOn = not state.musicOn
+  if not state.musicOn then
+    state.skipSong = true
+    stopSpeakers()
+    state.songName = "muted"
+  end
+  saveSettings()
+  state.dirty = true
+  flash(state.musicOn and "Music on" or "Music muted", 1500)
+end
+
+-- ============================================================
+-- Chat commands
+-- ============================================================
+local function handleChatCommand(user, msg)
+  local prefix = CHAT_CMD_PREFIX
+  if msg:sub(1, #prefix) ~= prefix then return false end
+
+  local body = msg:sub(#prefix + 1):gsub("^%s+", ""):gsub("%s+$", "")
+  if body == "" then return true end
+
+  local cmd, arg = body:match("^(%S+)%s*(.*)$")
+  if not cmd then return true end
+  cmd = cmd:lower()
+
+  if cmd == "next" or cmd == "r" then
+    advanceQuote()
+  elseif cmd == "prev" or cmd == "p" or cmd == "back" then
+    previousQuote()
+  elseif cmd == "pause" or cmd == "resume" then
+    togglePause()
+  elseif cmd == "skip" or cmd == "n" then
+    requestSkipSong()
+    flash(user .. " skipped", 2000)
+  elseif cmd == "mute" or cmd == "m" then
+    toggleMusic()
+  elseif cmd == "vol" or cmd == "volume" then
+    local n = tonumber(arg)
+    if n then
+      state.volume = math.max(0, math.min(1, n > 1 and (n / 100) or n))
+      saveSettings()
+      flash("Volume " .. math.floor(state.volume * 100 + 0.5) .. "%", 2000)
+    else
+      flash("Usage: #vol 50", 2000)
+    end
+  elseif cmd == "cat" or cmd == "category" then
+    cycleCategory()
+  elseif cmd == "playlist" or cmd == "pl" or cmd == "music" then
+    cyclePlaylist()
+  elseif cmd == "help" or cmd == "h" then
+    showHelp()
+  elseif cmd == "stats" then
+    showStats()
+  else
+    flash("Unknown #" .. cmd .. " (try #help)", 2500)
+  end
+  return true
+end
+
+local function tryCaptureChat(user, msg)
+  if not state.hasChatBox then return end
+  if type(user) ~= "string" or type(msg) ~= "string" then return end
+  if IGNORE_PLAYERS[user] then return end
+
+  if handleChatCommand(user, msg) then
+    return
+  end
+
+  if #msg < MIN_MSG_LEN then return end
+  local first = msg:sub(1, 1)
+  if first == "/" or first == "!" then return end
+  addChatQuote(user, msg)
+end
+
+-- ============================================================
+-- Event handling
+-- ============================================================
 local function handleGlobalEvent(ev)
   local kind = ev[1]
 
@@ -414,15 +882,40 @@ local function handleGlobalEvent(ev)
     elseif key == keys.r then
       advanceQuote()
       return "redraw"
+    elseif key == keys.p then
+      previousQuote()
+      return "redraw"
+    elseif key == keys.space then
+      togglePause()
+      return "redraw"
     elseif key == keys.n then
       requestSkipSong()
       return "abort_music"
     elseif key == keys.m then
       toggleMusic()
       return state.musicOn and "redraw" or "abort_music"
+    elseif key == keys.minus then
+      adjustVolume(-0.1)
+      return "redraw"
+    elseif key == keys.equals then
+      adjustVolume(0.1)
+      return "redraw"
+    elseif key == keys.c then
+      cycleCategory()
+      return "redraw"
+    elseif key == keys.l then
+      cyclePlaylist()
+      return "abort_music"
+    elseif key == keys.h then
+      showHelp()
+      return "redraw"
     end
   elseif kind == "monitor_touch" and TOUCH_ADVANCES then
-    advanceQuote()
+    if os.epoch("utc") < state.helpUntil then
+      state.helpUntil = 0
+    else
+      advanceQuote()
+    end
     return "redraw"
   elseif CHAT_EVENT_NAMES[kind] then
     tryCaptureChat(ev[2], ev[3])
@@ -436,8 +929,6 @@ local function shouldAbortPlayback()
   return (not state.running) or (not state.musicOn) or state.skipSong
 end
 
--- Sleep that re-queues non-timer events for the UI loop.
--- Only the music timeline uses this; UI owns chat/keys/touch handling.
 local function coopSleep(seconds)
   if seconds <= 0 then return end
   local tEnd = os.clock() + seconds
@@ -448,12 +939,11 @@ local function coopSleep(seconds)
     local timerId = os.startTimer(slice)
     local ev = { os.pullEventRaw() }
     if ev[1] == "timer" and ev[2] == timerId then
-      -- slice finished
+      -- ok
     elseif ev[1] == "terminate" then
       state.running = false
       return
     else
-      -- Let uiLoop handle controls/chat.
       os.queueEvent(table.unpack(ev))
     end
   end
@@ -462,16 +952,32 @@ end
 -- ============================================================
 -- UI loop
 -- ============================================================
-local function uiLoop(mon)
+local function updateScroll()
+  if not AUTO_SCROLL then return end
+  if state.bodyLines <= state.bodyHeight then return end
+  local now = os.epoch("utc")
+  if now < state.scrollAt then return end
+  state.scrollAt = now + math.floor(SCROLL_SECONDS * 1000)
+  local maxOff = state.bodyLines - state.bodyHeight
+  state.scrollOffset = state.scrollOffset + 1
+  if state.scrollOffset > maxOff then
+    state.scrollOffset = 0
+  end
+  state.dirty = true
+end
+
+local function uiLoop()
   scheduleNextQuote(QUOTE_INTERVAL)
+  state.startedAt = os.epoch("utc")
 
   while state.running do
-    if os.epoch("utc") >= state.nextQuoteAt then
+    if (not state.paused) and os.epoch("utc") >= state.nextQuoteAt then
       advanceQuote()
     end
+    updateScroll()
 
     local q = allQuotes[state.quoteIdx]
-    if q then drawScreen(mon, q) end
+    drawAll(q)
     state.dirty = false
 
     local timerId = os.startTimer(UI_TICK)
@@ -491,7 +997,7 @@ local function uiLoop(mon)
 end
 
 -- ============================================================
--- Music (single timeline so events are not eaten by nested sleeps)
+-- Music
 -- ============================================================
 local function getSongVoices(song)
   if song.voices then return song.voices end
@@ -499,11 +1005,27 @@ local function getSongVoices(song)
   return {}
 end
 
+local function pickSongIndex(lastIdx)
+  if #songBag == 0 then refillSongBag() end
+
+  -- Prefer not to repeat last song if bag has alternatives
+  if #songBag == 1 then
+    return table.remove(songBag, 1)
+  end
+
+  for i, idx in ipairs(songBag) do
+    if idx ~= lastIdx then
+      table.remove(songBag, i)
+      return idx
+    end
+  end
+  return table.remove(songBag, 1)
+end
+
 local function playSong(song, spkList)
   local voices = getSongVoices(song)
   if #voices == 0 or #spkList == 0 then return end
 
-  -- Flatten voices into a sorted absolute-time timeline.
   local timeline = {}
   for vi, voice in ipairs(voices) do
     local t = 0
@@ -538,11 +1060,14 @@ local function playSong(song, spkList)
 
     if type(ev.inst) == "string" then
       local spk = spkList[(ev.vi - 1) % #spkList + 1]
-      local ok = spk.playNote(ev.inst, ev.vol, ev.pitch)
-      if not ok then
-        coopSleep(0.05)
-        if shouldAbortPlayback() then return end
-        spk.playNote(ev.inst, ev.vol, ev.pitch)
+      local vol = (ev.vol or 1) * state.volume
+      if vol > 0 then
+        local ok = spk.playNote(ev.inst, vol, ev.pitch)
+        if not ok then
+          coopSleep(0.05)
+          if shouldAbortPlayback() then return end
+          spk.playNote(ev.inst, vol, ev.pitch)
+        end
       end
     end
   end
@@ -555,6 +1080,7 @@ local function musicLoop(spkList)
   end
 
   local isFirst, lastIdx = true, 0
+  refillSongBag()
 
   while state.running do
     if not state.musicOn then
@@ -572,13 +1098,13 @@ local function musicLoop(spkList)
     if isFirst then
       idx = TITLE_SONG_IDX
       if idx < 1 or idx > #SONGS then idx = 1 end
+      -- Remove title from bag so shuffle doesn't instantly replay it
+      for i, v in ipairs(songBag) do
+        if v == idx then table.remove(songBag, i) break end
+      end
       isFirst = false
-    elseif #SONGS == 1 then
-      idx = 1
     else
-      repeat
-        idx = math.random(#SONGS)
-      until idx ~= lastIdx
+      idx = pickSongIndex(lastIdx)
     end
     lastIdx = idx
 
@@ -624,15 +1150,39 @@ local function findChatBox()
 end
 
 -- ============================================================
+-- Boot splash
+-- ============================================================
+local function drawSplash()
+  for _, mon in ipairs(monitors) do
+    pcall(function()
+      local w, h = mon.getSize()
+      mon.setBackgroundColour(colours.black)
+      mon.setTextColour(colours.yellow)
+      mon.clear()
+      mon.setCursorPos(1, math.max(1, math.floor(h / 2) - 1))
+      mon.write(centre("* " .. BOARD_TITLE .. " *", w))
+      mon.setTextColour(colours.white)
+      mon.setCursorPos(1, math.max(1, math.floor(h / 2) + 1))
+      mon.write(centre(#SONGS .. " songs  ·  " .. #allQuotes .. " quotes", w))
+      mon.setTextColour(colours.lightGrey)
+      mon.setCursorPos(1, math.max(1, math.floor(h / 2) + 3))
+      mon.write(centre("Press H for controls", w))
+    end)
+  end
+end
+
+-- ============================================================
 -- Entry point
 -- ============================================================
 local function main()
   loadChatQuotes()
+  loadSettings()
   rebuildAllQuotes()
   assert(#allQuotes > 0, "No quotes available.")
   assert(#SONGS > 0, "No songs available.")
   math.randomseed(os.epoch("utc"))
   state.quoteIdx = math.random(#allQuotes)
+  state.startedAt = os.epoch("utc")
 
   local attached = peripheral.getNames()
   print("quote-board: peripherals (" .. #attached .. ")")
@@ -641,10 +1191,13 @@ local function main()
   end
   print("")
 
-  local mon = peripheral.find("monitor")
-  assert(mon, "No monitor found. Attach an Advanced Monitor and reboot.")
-  assert(mon.isColour(), "Monitor must be an Advanced (colour) Monitor.")
-  mon.setTextScale(MONITOR_SCALE)
+  monitors = findMonitors()
+  assert(#monitors > 0, "No colour monitor found. Attach an Advanced Monitor and reboot.")
+  for _, mon in ipairs(monitors) do
+    pcall(mon.setTextScale, MONITOR_SCALE)
+  end
+  print("[OK]  " .. #monitors .. " monitor(s)"
+    .. (MIRROR_ALL_MONITORS and " (mirrored)" or ""))
 
   speakers = findAllSpeakers()
   state.speakerCount = #speakers
@@ -660,27 +1213,25 @@ local function main()
   state.hasChatBox = box ~= nil
   if not box then
     print("[WARN] No Chat Box — chat capture disabled.")
-    print("       Tried: chatBox, chat_box, chatbox")
-    if CHAT_BOX_NAME ~= "" then
-      print("       Also tried CHAT_BOX_NAME = '" .. CHAT_BOX_NAME .. "'")
-    end
   else
     print("[OK]  Chat Box detected.")
   end
 
-  print("Songs: " .. #SONGS .. "  |  Quotes: " .. #allQuotes)
-  print("Keys:  R next quote | N skip song | M mute | Q quit")
-  print("Touch the monitor to advance quotes.")
-  if #speakers == 0 or not box then
-    os.sleep(3)
-  else
-    os.sleep(1)
-  end
+  print("Songs: " .. #SONGS .. "  |  Quotes: " .. #allQuotes
+    .. "  |  Vol: " .. math.floor(state.volume * 100) .. "%")
+  print("Keys: R/P quote  Space pause  N skip  M mute  -/= vol")
+  print("      C category  L playlist  H help  Q quit")
+  print("Chat: " .. CHAT_CMD_PREFIX .. "next "
+    .. CHAT_CMD_PREFIX .. "skip "
+    .. CHAT_CMD_PREFIX .. "mute "
+    .. CHAT_CMD_PREFIX .. "vol 50 "
+    .. CHAT_CMD_PREFIX .. "help")
 
-  -- Two parallel loops; both use coop/raw event handling so chat & keys
-  -- are never discarded by filtered sleeps during note playback.
+  drawSplash()
+  os.sleep((#speakers == 0 or not box) and 3 or 1.5)
+
   parallel.waitForAll(
-    function() uiLoop(mon) end,
+    function() uiLoop() end,
     function() musicLoop(speakers) end
   )
 end
@@ -689,6 +1240,7 @@ local ok, err = pcall(main)
 
 state.running = false
 stopAllSpeakers()
+saveSettings()
 
 term.setBackgroundColour(colours.black)
 term.setTextColour(colours.white)
@@ -699,4 +1251,6 @@ if not ok and err ~= "Terminated" then
   printError("quote-board error: " .. tostring(err))
 else
   print("Quote Board stopped.")
+  print("Session: " .. state.quotesShown .. " quotes shown, "
+    .. state.chatCaptured .. " chat captured.")
 end

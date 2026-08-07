@@ -1,6 +1,6 @@
 # Quote Board
 
-HOI4-style rotating tips and quotes on an Advanced Monitor, with multi-speaker music and optional Chat Box capture.
+HOI4-style rotating tips and quotes on Advanced Monitors, with multi-speaker music, live chat capture, and remote chat commands.
 
 Requires **CC: Tweaked 1.119.x** (Minecraft 1.21.1 NeoForge).
 
@@ -10,19 +10,17 @@ All three must sit in the **same directory** on the computer:
 
 | File | Role |
 |------|------|
-| `quote-board.lua` | Main program — config, display, chat, music loop |
-| `songs.lua` | Song library (`require("songs")`) |
-| `quotes.lua` | Built-in quote pool (`require("quotes")`) |
+| `quote-board.lua` | Main program |
+| `songs.lua` | Song library |
+| `quotes.lua` | Built-in quote pool |
 
 ## Hardware
 
 | Peripheral | Required? | Notes |
 |------------|-----------|-------|
-| Advanced Monitor (colour) | **Yes** | Display surface (touch advances quotes) |
+| Advanced Monitor (colour) | **Yes** | Touch advances quotes; multiple monitors are mirrored |
 | Speaker(s) | Optional | Multiple speakers = polyphonic voices |
-| Chat Box ([Advanced Peripherals](https://modrinth.com/mod/advanced-peripherals)) | Optional | Captures player chat as quotes |
-
-Missing speakers or Chat Box logs a warning; the board still runs.
+| Chat Box ([Advanced Peripherals](https://modrinth.com/mod/advanced-peripherals)) | Optional | Captures chat + accepts `#` commands |
 
 ## Install
 
@@ -32,105 +30,110 @@ wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts
 wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/quotes.lua quotes.lua
 ```
 
-Or copy the whole `scripts/quote-board/` folder onto the computer.
-
-## Run
-
-```
-quote-board
-```
-
-Auto-start from `startup.lua`:
-
-```lua
-shell.run("quote-board")
-```
-
 ## Controls
 
 | Input | Action |
 |-------|--------|
 | `R` | Next quote |
-| `N` | Skip current song |
-| `M` | Mute / unmute music |
-| `Q` or `Ctrl+T` | Quit |
-| Monitor touch | Next quote |
+| `P` | Previous quote |
+| `Space` | Pause / resume quote rotation |
+| `N` | Skip song |
+| `M` | Mute / unmute |
+| `-` / `=` | Volume down / up |
+| `C` | Cycle category filter |
+| `L` | Cycle music playlist |
+| `H` | Help overlay + session stats |
+| `Q` / `Ctrl+T` | Quit |
+| Monitor touch | Next quote (or dismiss help) |
 
-## Behaviour
+## Chat commands
+
+Prefix `#` (configurable). Anyone can use these when a Chat Box is present:
+
+| Command | Action |
+|---------|--------|
+| `#next` | Next quote |
+| `#prev` | Previous quote |
+| `#pause` | Pause / resume |
+| `#skip` | Skip song |
+| `#mute` | Mute / unmute |
+| `#vol 50` | Set volume 0–100 |
+| `#cat` | Cycle category filter |
+| `#playlist` | Cycle playlist |
+| `#help` | Help overlay |
+| `#stats` | Flash uptime / counts |
+
+Normal chat (not a command, long enough, not `/` or `!`) is captured as a `[ PLAYER ]` quote.
+
+## Features
 
 ### Quotes
+- Weighted rotation prefers a **different category** each time
+- Player quotes weighted higher
+- Category filter lock (`C` / `#cat`): ALL → TIP → DID YOU KNOW → …
+- Pause freezes the timer; progress bar shows time-to-next
+- Previous-quote history
+- Long quotes auto-scroll
+- Soft click on quote change (optional)
 
-Cycles every 15 seconds (see `QUOTE_INTERVAL`). A live **next Ns** countdown sits on the category row.
-
-Selection is weighted so the next quote prefers a **different category**. Player-captured quotes get a slightly higher weight.
-
-| Badge | Colour | Style |
-|-------|--------|-------|
-| `[ TIP ]` | Yellow | Dry gameplay advice |
-| `[ DID YOU KNOW ]` | Cyan | Odd facts |
-| `[ WISDOM ]` | Lime | Motivational, undercut by reality |
-| `[ LOADING ]` | Light grey | Loading-screen asides |
-| `[ QUOTE ]` | Orange | Real-life misquotations |
-| `[ PLAYER ]` | Pink | Captured from player chat |
-
-### Chat capture
-
-When a Chat Box is attached:
-
-- Player messages become `[ PLAYER ]` quotes and persist in `quote-board-chat.dat`
-- Fresh captures **jump onto the board immediately** with a short `LIVE: <name>` header flash
-- Exact duplicate messages (recent) are ignored
-- Commands starting with `/` or `!`, and short messages under `MIN_MSG_LEN`, are ignored
-
-Detection tries `chatBox`, `chat_box`, `chatbox`, then any peripheral type containing `"chat"`. Events: `chat` and `chat_message`.
-
-If auto-detect fails, set `CHAT_BOX_NAME` to the side/name from the startup peripheral dump.
+### Chat
+- Fresh captures jump onto the board with a `LIVE: name` flash
+- Recent duplicate messages ignored
+- Optional ignore-list for bots / players
+- Persisted in `quote-board-chat.dat`
 
 ### Music
+- **A New Start** always plays first after boot
+- Shuffle bag (no repeats until the bag empties)
+- Playlists: All / Elevator / Zelda-inspired / Originals / Title only
+- Volume control + mute; settings persist in `quote-board-settings.dat`
+- Interruptible timeline playback (skip/mute/chat never get swallowed)
 
-- **A New Start (Lofi Remix)** always plays first after boot
-- After that, songs are chosen at random (no immediate repeat)
-- Mute (`M`) and skip (`N`) interrupt the current track cleanly
-- Voice count depends on the song and how many speakers are attached:
-  - Title track: up to 3 voices
-  - Elevator tracks: up to 2 voices
-  - Zelda-inspired tracks: up to 4 voices
-  - Originals (Ancient Temple, Kokiri Home): up to 6 voices
-- If a song errors, the loop continues with the next track
-- Footer shows the track name, or `MUTED` in red
+### Display
+- Boot splash
+- Clock in the header
+- Mirrored across all attached colour monitors
+- Help overlay with session stats (uptime, quotes shown, chat captured)
 
 ## Config
 
-Edit the constants at the top of `quote-board.lua`:
+Top of `quote-board.lua`:
 
 | Constant | Default | Meaning |
 |----------|---------|---------|
-| `QUOTE_INTERVAL` | `15` | Seconds between quote changes |
-| `MONITOR_SCALE` | `0.5` | Monitor text scale |
-| `CHAT_FILE` | `quote-board-chat.dat` | Persisted chat quotes |
-| `MAX_CHAT_QUOTES` | `50` | Cap on stored chat quotes |
-| `MIN_MSG_LEN` | `10` | Minimum chat length to capture |
-| `CHAT_BOX_NAME` | `""` | Blank = auto-detect |
-| `DIFF_CAT_WEIGHT` | `4` | Weight for a different category |
-| `SAME_CAT_WEIGHT` | `1` | Weight for the same category |
-| `PLAYER_CAT_WEIGHT` | `6` | Weight for PLAYER quotes |
-| `TITLE_SONG_IDX` | `1` | Song index that always plays first |
-| `MUSIC_START_ON` | `true` | Start unmuted |
+| `BOARD_TITLE` | `MOTIVATIONAL CORNER` | Header title |
+| `QUOTE_INTERVAL` | `15` | Seconds between quotes |
+| `MONITOR_SCALE` | `0.5` | Text scale |
+| `CHAT_CMD_PREFIX` | `#` | Chat command prefix |
+| `MIRROR_ALL_MONITORS` | `true` | Draw on every colour monitor |
+| `SHOW_CLOCK` | `true` | Header clock |
+| `SHOW_PROGRESS_BAR` | `true` | Timer bar above footer |
+| `AUTO_SCROLL` | `true` | Scroll tall quotes |
+| `DEFAULT_VOLUME` | `1.0` | Initial volume (overridden by saved settings) |
 | `FRESH_CHAT_FOCUS` | `true` | Jump to new chat quotes |
-| `TOUCH_ADVANCES` | `true` | Monitor tap advances quote |
+| `QUOTE_TICK_SOUND` | `true` | Click on quote change |
+| `IGNORE_PLAYERS` | `{}` | Names that are never captured |
+| `PLAYER_CAT_WEIGHT` | `6` | Weight for PLAYER quotes |
+| `TITLE_SONG_IDX` | `1` | First song after boot |
+
+## Persisted files
+
+| File | Contents |
+|------|----------|
+| `quote-board-chat.dat` | Captured player quotes |
+| `quote-board-settings.dat` | Volume, mute, playlist, category filter |
 
 ## Layout
 
 ```
-+----------------------------------+
-|     * MOTIVATIONAL CORNER *      |   (or LIVE: PlayerName)
-+----------------------------------+
-| [ TIP ]                  next 12s|
-|                                  |
-|   "The quote text goes here"     |
-|                                  |
-|                    — Attribution |
-+----------------------------------+
-|  * Song Name | 4spk | chat:3     |
-+----------------------------------+
++------------------------------------------+
+|  * MOTIVATIONAL CORNER *           14:32 |
++------------------------------------------+
+| [ TIP ]                        next 12s  |
+|                                          |
+|   "The quote text goes here"             |
+|                            — Attribution |
+| ==================---------------------- |
+|  * Song Name | 4spk | Elevator | 80%     |
++------------------------------------------+
 ```
