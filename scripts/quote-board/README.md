@@ -6,11 +6,12 @@ Requires **CC: Tweaked 1.119.x** (Minecraft 1.21.1 NeoForge).
 
 ## Files
 
-All three must sit in the **same directory** on the computer:
+All four must sit in the **same directory** on the computer:
 
 | File | Role |
 |------|------|
 | `quote-board.lua` | Main program |
+| `apps.lua` | Mini-app launcher (jukebox, library, …) |
 | `songs.lua` | Song library |
 | `quotes.lua` | Built-in quote pool |
 
@@ -26,6 +27,7 @@ All three must sit in the **same directory** on the computer:
 
 ```
 wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/quote-board.lua quote-board.lua
+wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/apps.lua apps.lua
 wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/songs.lua songs.lua
 wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/quotes.lua quotes.lua
 ```
@@ -42,9 +44,11 @@ wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts
 | `-` / `=` | Volume down / up |
 | `C` | Cycle category filter |
 | `L` | Cycle music playlist |
+| `A` | Open / close apps |
+| `X` | Back to launcher / board |
 | `H` | Help overlay + session stats |
 | `Q` / `Ctrl+T` | Quit |
-| Monitor touch | Next quote (or dismiss help) |
+| Monitor touch | Next quote, or interact with apps |
 
 ## Chat commands
 
@@ -62,8 +66,27 @@ Prefix `#` (configurable). Anyone can use these when a Chat Box is present:
 | `#playlist` | Cycle playlist |
 | `#help` | Help overlay |
 | `#stats` | Flash uptime / counts |
+| `#apps` | Open app launcher |
+| `#app jukebox` | Open a named app |
+| `#home` | Return to the quote board |
 
 Normal chat (not a command, long enough, not `/` or `!`) is captured as a `[ PLAYER ]` quote.
+
+## Apps
+
+Press `A` (or `#apps`) for the launcher. Quote rotation pauses while an app is open; music keeps playing.
+
+| App | What it does |
+|-----|----------------|
+| **Jukebox** | Browse all tracks, Enter/tap to queue one now |
+| **Quote Library** | Flip through the pool; Enter pins one to the board |
+| **Chat Log** | Newest player quotes; Enter pins to the board |
+| **Clock** | Large live clock + uptime |
+| **Stats** | Session counts, categories, playlist sizes |
+| **Dice** | Roll d2–d100 for the room |
+| **About** | Short board blurb |
+
+`X` returns to the launcher (or the board from the launcher). `A` always jumps back to the board.
 
 ## Features
 

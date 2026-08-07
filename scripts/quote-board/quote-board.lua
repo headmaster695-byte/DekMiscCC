@@ -11,9 +11,11 @@
 --   R next quote     P previous      Space pause/resume quotes
 --   N skip song      M mute/unmute   -/= volume down/up
 --   C category filter  L playlist     H help overlay
---   Q quit           Monitor touch = next quote
+--   A apps launcher  X back/home     Q quit
+--   Monitor touch = next quote (or app UI)
 -- Chat commands (prefix '#'):
---   #next #prev #pause #skip #mute #vol <0-100> #cat #playlist #help #stats
+--   #next #prev #pause #skip #mute #vol <0-100> #cat #playlist
+--   #help #stats #apps #app <name> #home
 
 -- ============================================================
 -- Configuration
@@ -52,7 +54,7 @@ local IGNORE_PLAYERS = {
 -- ============================================================
 -- Data modules
 -- ============================================================
-local SONGS, BUILTIN_QUOTES
+local SONGS, BUILTIN_QUOTES, Apps
 
 do
   local here = fs.getDir(shell.getRunningProgram())
@@ -63,14 +65,19 @@ do
 
   local okSongs, songs = pcall(require, "songs")
   local okQuotes, quotes = pcall(require, "quotes")
+  local okApps, appsMod = pcall(require, "apps")
   if not okSongs then
     error("Missing songs.lua — place it next to quote-board.lua\n" .. tostring(songs))
   end
   if not okQuotes then
     error("Missing quotes.lua — place it next to quote-board.lua\n" .. tostring(quotes))
   end
+  if not okApps then
+    error("Missing apps.lua — place it next to quote-board.lua\n" .. tostring(appsMod))
+  end
   SONGS = songs
   BUILTIN_QUOTES = quotes
+  Apps = appsMod
 end
 
 -- ============================================================
@@ -129,6 +136,7 @@ local state = {
   musicOn       = MUSIC_START_ON,
   volume        = DEFAULT_VOLUME,
   skipSong      = false,
+  requestSongIdx= nil,          -- jukebox queue
   dirty         = true,
   nextQuoteAt   = 0,
   flashUntil    = 0,
@@ -138,7 +146,7 @@ local state = {
   helpUntil     = 0,
   categoryFilter= "ALL",
   playlist      = "all",
-  history       = {},           -- previous quote indices
+  history       = {},           -- previous quote snapshots
   scrollOffset  = 0,
   scrollAt      = 0,
   bodyLines     = 0,
@@ -146,7 +154,13 @@ local state = {
   quotesShown   = 0,
   chatCaptured  = 0,
   startedAt     = 0,
+  app           = nil,          -- active mini-app instance
+  appId         = nil,
 }
+
+-- Forward declarations filled in after helpers exist
+local openApp, closeApp, goAppHome, queueSong, showQuoteIndex
+local appContext
 
 local CHAT_EVENT_NAMES = { chat = true, chat_message = true }
 
@@ -270,7 +284,9 @@ local function loadChatQuotes()
   f.close()
   local ok, data = pcall(textutils.unserialise, raw)
   if not ok or type(data) ~= "table" then return end
-  chatQuotes = {}
+  for i = #chatQuotes, 1, -1 do
+    chatQuotes[i] = nil
+  end
   for _, q in ipairs(data) do
     if isValidQuote(q) then
       chatQuotes[#chatQuotes + 1] = { q[1], q[2], q[3] }
@@ -286,7 +302,10 @@ local function saveChatQuotes()
 end
 
 local function rebuildAllQuotes()
-  allQuotes = {}
+  -- Mutate in place so app contexts keep a live reference.
+  for i = #allQuotes, 1, -1 do
+    allQuotes[i] = nil
+  end
   for _, q in ipairs(BUILTIN_QUOTES) do
     if isValidQuote(q) then
       allQuotes[#allQuotes + 1] = q
@@ -451,12 +470,13 @@ local function drawHelp(mon, w, h)
     "- / =  volume",
     "C category filter",
     "L playlist filter",
-    "H help   Q quit",
+    "A apps     X back",
+    "H help     Q quit",
     "Touch monitor = next",
     "",
-    "Chat: #next #skip #mute",
-    "      #vol 50 #pause",
-    "      #cat #playlist",
+    "Chat: #apps #app jukebox",
+    "      #next #skip #mute",
+    "      #vol 50 #playlist",
     "",
     "Up " .. uptimeString()
       .. "  shown " .. state.quotesShown,
@@ -641,14 +661,37 @@ local function drawScreenOn(mon, quote)
   mon.setTextColour(colours.white)
 end
 
+local function drawAppOn(mon)
+  if not state.app then return end
+  local ok, err = pcall(function()
+    state.app:draw(mon)
+  end)
+  if not ok then
+    local w, h = mon.getSize()
+    mon.setBackgroundColour(colours.black)
+    mon.setTextColour(colours.red)
+    mon.clear()
+    mon.setCursorPos(1, 1)
+    mon.write("App error")
+    mon.setCursorPos(1, 3)
+    mon.write(tostring(err):sub(1, w))
+    mon.setTextColour(colours.lightGrey)
+    mon.setCursorPos(1, h)
+    mon.write("X back  A board")
+  end
+end
+
 local function drawAll(quote)
-  if not isValidQuote(quote) then return end
   local list = monitors
   if not MIRROR_ALL_MONITORS and #list > 0 then
     list = { list[1] }
   end
   for _, mon in ipairs(list) do
-    pcall(drawScreenOn, mon, quote)
+    if state.app then
+      pcall(drawAppOn, mon)
+    elseif isValidQuote(quote) then
+      pcall(drawScreenOn, mon, quote)
+    end
   end
 end
 
@@ -862,6 +905,89 @@ local function toggleMusic()
 end
 
 -- ============================================================
+-- Mini-apps
+-- ============================================================
+queueSong = function(idx)
+  if type(idx) ~= "number" or idx < 1 or idx > #SONGS then return end
+  state.requestSongIdx = idx
+  state.skipSong = true
+  stopSpeakers()
+  if not state.musicOn then
+    state.musicOn = true
+    saveSettings()
+  end
+  flash("Queued: " .. (SONGS[idx].name or ("#" .. idx)), 2000)
+  state.dirty = true
+end
+
+showQuoteIndex = function(idx)
+  if type(idx) ~= "number" or idx < 1 or idx > #allQuotes then return end
+  pushHistoryQuote(allQuotes[state.quoteIdx])
+  state.quoteIdx = idx
+  state.quotesShown = state.quotesShown + 1
+  scheduleNextQuote(QUOTE_INTERVAL)
+  playTick()
+  flash("Pinned quote", 1500)
+end
+
+local function buildAppContext()
+  return {
+    SONGS = SONGS,
+    allQuotes = allQuotes,
+    chatQuotes = chatQuotes,
+    state = state,
+    boardTitle = BOARD_TITLE,
+    wordWrap = wordWrap,
+    centre = centre,
+    flash = flash,
+    clockString = clockString,
+    uptimeString = uptimeString,
+    playlistLabel = function(id) return PLAYLIST_LABEL[id] end,
+    requestSkipSong = requestSkipSong,
+    toggleMusic = toggleMusic,
+    queueSong = queueSong,
+    showQuoteIndex = showQuoteIndex,
+    openApp = function(id) openApp(id) end,
+  }
+end
+
+openApp = function(id)
+  appContext = buildAppContext()
+  state.helpUntil = 0
+  state.appId = id or "launcher"
+  state.app = Apps.open(state.appId, appContext)
+  state.dirty = true
+end
+
+closeApp = function()
+  state.app = nil
+  state.appId = nil
+  state.dirty = true
+  scheduleNextQuote(QUOTE_INTERVAL)
+end
+
+goAppHome = function()
+  openApp("launcher")
+end
+
+local function handleAppAction(result)
+  if result == "close" then
+    closeApp()
+    return "redraw"
+  elseif result == "home" then
+    goAppHome()
+    return "redraw"
+  elseif result == "abort_music" then
+    state.dirty = true
+    return "abort_music"
+  elseif result == "redraw" then
+    state.dirty = true
+    return "redraw"
+  end
+  return result
+end
+
+-- ============================================================
 -- Chat commands
 -- ============================================================
 local function handleChatCommand(user, msg)
@@ -902,7 +1028,30 @@ local function handleChatCommand(user, msg)
   elseif cmd == "help" or cmd == "h" then
     showHelp()
   elseif cmd == "stats" then
-    showStats()
+    if arg ~= "" then
+      openApp("stats")
+    else
+      showStats()
+    end
+  elseif cmd == "apps" or cmd == "app" or cmd == "menu" then
+    local name = (arg ~= "" and arg or "launcher"):lower()
+    if name == "list" or name == "launcher" or name == "menu" then
+      openApp("launcher")
+    else
+      local ok = false
+      for _, id in ipairs(Apps.ids()) do
+        if id == name then
+          openApp(id)
+          ok = true
+          break
+        end
+      end
+      if not ok then
+        flash("Apps: jukebox library chatlog clock stats dice about", 3500)
+      end
+    end
+  elseif cmd == "home" or cmd == "board" then
+    closeApp()
   else
     flash("Unknown #" .. cmd .. " (try #help)", 2500)
   end
@@ -937,10 +1086,54 @@ local function handleGlobalEvent(ev)
 
   if kind == "key" then
     local key = ev[2]
+
+    -- Global keys always available
     if key == keys.q then
       state.running = false
       return "quit"
-    elseif key == keys.r then
+    elseif key == keys.a then
+      if state.app then
+        closeApp()
+      else
+        openApp("launcher")
+      end
+      return "redraw"
+    elseif key == keys.x or key == keys.backspace then
+      if state.app then
+        if state.appId == "launcher" then
+          closeApp()
+        else
+          goAppHome()
+        end
+        return "redraw"
+      end
+    end
+
+    -- Route to active app
+    if state.app and state.app.onKey then
+      local result = handleAppAction(state.app:onKey(key))
+      if result then return result end
+      -- Unhandled: still allow mute/skip/volume while in apps
+      if key == keys.n then
+        requestSkipSong()
+        return "abort_music"
+      elseif key == keys.m then
+        toggleMusic()
+        return state.musicOn and "redraw" or "abort_music"
+      elseif key == keys.minus then
+        adjustVolume(-0.1)
+        return "redraw"
+      elseif key == keys.equals then
+        adjustVolume(0.1)
+        return "redraw"
+      elseif key == keys.h then
+        showHelp()
+        return "redraw"
+      end
+      return nil
+    end
+
+    if key == keys.r then
       advanceQuote()
       return "redraw"
     elseif key == keys.p then
@@ -971,13 +1164,28 @@ local function handleGlobalEvent(ev)
       showHelp()
       return "redraw"
     end
-  elseif kind == "monitor_touch" and TOUCH_ADVANCES then
-    if os.epoch("utc") < state.helpUntil then
-      state.helpUntil = 0
-    else
-      advanceQuote()
+  elseif kind == "monitor_touch" then
+    local _, x, y = ev[2], ev[3], ev[4]
+    -- Advanced Peripherals / CC: monitor_touch name, x, y — ev[2] may be side
+    if type(x) ~= "number" then
+      x, y = ev[2], ev[3]
     end
-    return "redraw"
+    if state.app and state.app.onTouch then
+      local mon = monitors[1]
+      local w, h = 20, 10
+      if mon then w, h = mon.getSize() end
+      local result = handleAppAction(state.app:onTouch(x or 1, y or 1, w, h))
+      if result then return result end
+      return "redraw"
+    end
+    if TOUCH_ADVANCES then
+      if os.epoch("utc") < state.helpUntil then
+        state.helpUntil = 0
+      else
+        advanceQuote()
+      end
+      return "redraw"
+    end
   elseif CHAT_EVENT_NAMES[kind] then
     tryCaptureChat(ev[2], ev[3])
     return "redraw"
@@ -1059,10 +1267,16 @@ local function uiLoop()
   state.startedAt = os.epoch("utc")
 
   while state.running do
-    if (not state.paused) and os.epoch("utc") >= state.nextQuoteAt then
+    -- Quote rotation pauses while a mini-app is open.
+    if (not state.app) and (not state.paused) and os.epoch("utc") >= state.nextQuoteAt then
       advanceQuote()
     end
-    updateScroll()
+    if not state.app then
+      updateScroll()
+    elseif state.app.tick then
+      local tickResult = handleAppAction(state.app:tick())
+      if tickResult == "quit" then return end
+    end
 
     local q = allQuotes[state.quoteIdx]
     drawAll(q)
@@ -1185,7 +1399,15 @@ local function musicLoop(spkList)
     state.skipSong = false
 
     local idx
-    if isFirst then
+    if state.requestSongIdx then
+      idx = state.requestSongIdx
+      state.requestSongIdx = nil
+      isFirst = false
+      -- Keep bag coherent: drop the queued track if present
+      for i, v in ipairs(songBag) do
+        if v == idx then table.remove(songBag, i) break end
+      end
+    elseif isFirst then
       idx = TITLE_SONG_IDX
       if idx < 1 or idx > #SONGS then idx = 1 end
       -- Remove title from bag so shuffle doesn't instantly replay it
@@ -1260,7 +1482,7 @@ local function drawSplash()
       mon.write(centre(#SONGS .. " songs  ·  " .. #allQuotes .. " quotes", w))
       mon.setTextColour(colours.lightGrey)
       mon.setCursorPos(1, math.max(1, math.floor(h / 2) + 3))
-      mon.write(centre("Press H for controls", w))
+      mon.write(centre("H help   A apps", w))
     end)
   end
 end
@@ -1315,11 +1537,10 @@ local function main()
   print("Songs: " .. #SONGS .. "  |  Quotes: " .. #allQuotes
     .. "  |  Vol: " .. math.floor(state.volume * 100) .. "%")
   print("Keys: R/P quote  Space pause  N skip  M mute  -/= vol")
-  print("      C category  L playlist  H help  Q quit")
-  print("Chat: " .. CHAT_CMD_PREFIX .. "next "
-    .. CHAT_CMD_PREFIX .. "skip "
-    .. CHAT_CMD_PREFIX .. "mute "
-    .. CHAT_CMD_PREFIX .. "vol 50 "
+  print("      C category  L playlist  A apps  X back  H help  Q quit")
+  print("Chat: " .. CHAT_CMD_PREFIX .. "apps  "
+    .. CHAT_CMD_PREFIX .. "app jukebox  "
+    .. CHAT_CMD_PREFIX .. "next  "
     .. CHAT_CMD_PREFIX .. "help")
 
   drawSplash()
