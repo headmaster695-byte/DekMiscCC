@@ -24,6 +24,7 @@ local BOARD_TITLE         = "MOTIVATIONAL CORNER"
 local QUOTE_INTERVAL      = 15
 local MONITOR_SCALE       = 0.5
 local CHAT_FILE           = "quote-board-chat.dat"
+local CUSTOM_FILE         = "quote-board-custom.dat"
 local SETTINGS_FILE       = "quote-board-settings.dat"
 local MAX_CHAT_QUOTES     = 50
 local MIN_MSG_LEN         = 10
@@ -123,10 +124,11 @@ end
 -- ============================================================
 -- Shared state
 -- ============================================================
-local allQuotes  = {}
-local chatQuotes = {}
-local speakers   = {}
-local monitors   = {}
+local allQuotes    = {}
+local chatQuotes   = {}
+local customQuotes = {}  -- { text, source, category, enabled } ; enabled defaults false
+local speakers     = {}
+local monitors     = {}
 
 local state = {
   running       = true,
@@ -305,14 +307,57 @@ local function saveChatQuotes()
   f.close()
 end
 
+local CUSTOM_CATEGORIES = {
+  TIP = true, ["DID YOU KNOW"] = true, WISDOM = true, LOADING = true, QUOTE = true,
+}
+
+local function normalizeCustomQuote(q)
+  if not isValidQuote(q) then return nil end
+  local cat = q[3]
+  if not CUSTOM_CATEGORIES[cat] then cat = "TIP" end
+  local enabled = q[4]
+  if enabled ~= true then enabled = false end  -- default OFF
+  return { q[1], q[2], cat, enabled }
+end
+
+local function loadCustomQuotes()
+  if not fs.exists(CUSTOM_FILE) then return end
+  local f = fs.open(CUSTOM_FILE, "r")
+  if not f then return end
+  local raw = f.readAll()
+  f.close()
+  local ok, data = pcall(textutils.unserialise, raw)
+  if not ok or type(data) ~= "table" then return end
+  for i = #customQuotes, 1, -1 do
+    customQuotes[i] = nil
+  end
+  for _, q in ipairs(data) do
+    local n = normalizeCustomQuote(q)
+    if n then customQuotes[#customQuotes + 1] = n end
+  end
+end
+
+local function saveCustomQuotes()
+  local f = fs.open(CUSTOM_FILE, "w")
+  if not f then return end
+  f.write(textutils.serialise(customQuotes))
+  f.close()
+end
+
 local function rebuildAllQuotes()
   -- Mutate in place so app contexts keep a live reference.
+  -- Order: builtins → enabled customs → chat (chat must stay last for Chat Log pinning).
   for i = #allQuotes, 1, -1 do
     allQuotes[i] = nil
   end
   for _, q in ipairs(BUILTIN_QUOTES) do
     if isValidQuote(q) then
       allQuotes[#allQuotes + 1] = q
+    end
+  end
+  for _, q in ipairs(customQuotes) do
+    if q[4] == true and isValidQuote(q) then
+      allQuotes[#allQuotes + 1] = { q[1], q[2], q[3] }
     end
   end
   for _, q in ipairs(chatQuotes) do
@@ -937,11 +982,36 @@ showQuoteIndex = function(idx)
   flash("Pinned quote", 1500)
 end
 
+local CUSTOM_CAT_ORDER = { "TIP", "DID YOU KNOW", "WISDOM", "LOADING", "QUOTE" }
+
+local function refreshQuotesFromCustoms()
+  local prev = allQuotes[state.quoteIdx]
+  rebuildAllQuotes()
+  -- Keep the same quote text in view when possible after enable toggles.
+  if prev and isValidQuote(prev) then
+    for i, q in ipairs(allQuotes) do
+      if q[1] == prev[1] and q[2] == prev[2] and q[3] == prev[3] then
+        state.quoteIdx = i
+        break
+      end
+    end
+  end
+  state.dirty = true
+end
+
+local function saveAndRebuildCustoms()
+  saveCustomQuotes()
+  refreshQuotesFromCustoms()
+end
+
 local function buildAppContext()
   return {
     SONGS = SONGS,
+    BUILTIN_QUOTES = BUILTIN_QUOTES,
     allQuotes = allQuotes,
     chatQuotes = chatQuotes,
+    customQuotes = customQuotes,
+    customCategories = CUSTOM_CAT_ORDER,
     state = state,
     boardTitle = BOARD_TITLE,
     wordWrap = wordWrap,
@@ -955,6 +1025,8 @@ local function buildAppContext()
     queueSong = queueSong,
     showQuoteIndex = showQuoteIndex,
     openApp = function(id) openApp(id) end,
+    saveCustomQuotes = saveAndRebuildCustoms,
+    normalizeCustomQuote = normalizeCustomQuote,
   }
 end
 
@@ -1054,7 +1126,7 @@ local function handleChatCommand(user, msg)
         end
       end
       if not ok then
-        flash("Apps: jukebox library chatlog clock stats dice about", 3500)
+        flash("Apps: jukebox library workshop chatlog clock stats dice about", 3500)
       end
     end
   elseif cmd == "home" or cmd == "board" then
@@ -1091,6 +1163,14 @@ local function handleGlobalEvent(ev)
     return "quit"
   end
 
+  if kind == "char" then
+    if state.app and state.app.onChar then
+      local result = handleAppAction(state.app:onChar(ev[2]))
+      if result then return result end
+    end
+    return nil
+  end
+
   if kind == "key" then
     local key = ev[2]
 
@@ -1105,8 +1185,13 @@ local function handleGlobalEvent(ev)
         openApp("launcher")
       end
       return "redraw"
-    elseif key == keys.x or key == keys.backspace then
-      if state.app then
+    end
+
+    -- Route to active app (before X/backspace so editors can use Backspace)
+    if state.app and state.app.onKey then
+      local result = handleAppAction(state.app:onKey(key))
+      if result then return result end
+      if key == keys.x then
         if state.appId == "launcher" then
           closeApp()
         else
@@ -1114,12 +1199,6 @@ local function handleGlobalEvent(ev)
         end
         return "redraw"
       end
-    end
-
-    -- Route to active app
-    if state.app and state.app.onKey then
-      local result = handleAppAction(state.app:onKey(key))
-      if result then return result end
       -- Unhandled: still allow mute/skip/volume while in apps
       if key == keys.n then
         requestSkipSong()
@@ -1590,6 +1669,7 @@ end
 -- ============================================================
 local function main()
   loadChatQuotes()
+  loadCustomQuotes()
   loadSettings()
   rebuildAllQuotes()
   assert(#allQuotes > 0, "No quotes available.")

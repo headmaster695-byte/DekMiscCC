@@ -70,13 +70,14 @@ local function newLauncher(ctx)
     id = "launcher",
     cursor = 1,
     catalog = {
-      { id = "jukebox", title = "Jukebox",      blurb = "Browse and queue songs" },
-      { id = "library", title = "Quote Library", blurb = "Browse the quote pool" },
-      { id = "chatlog", title = "Chat Log",     blurb = "Recent player quotes" },
-      { id = "clock",   title = "Clock",        blurb = "Large clock display" },
-      { id = "stats",   title = "Stats",        blurb = "Session and library info" },
-      { id = "dice",    title = "Dice",         blurb = "Roll for the room" },
-      { id = "about",   title = "About",        blurb = "What this board is" },
+      { id = "jukebox",  title = "Jukebox",        blurb = "Browse and queue songs" },
+      { id = "library",  title = "Quote Library",  blurb = "Browse the quote pool" },
+      { id = "workshop", title = "Quote Workshop", blurb = "New / rewrite / enable customs" },
+      { id = "chatlog",  title = "Chat Log",       blurb = "Recent player quotes" },
+      { id = "clock",    title = "Clock",          blurb = "Large clock display" },
+      { id = "stats",    title = "Stats",          blurb = "Session and library info" },
+      { id = "dice",     title = "Dice",           blurb = "Roll for the room" },
+      { id = "about",    title = "About",          blurb = "What this board is" },
     },
   }
 
@@ -99,7 +100,7 @@ local function newLauncher(ctx)
       mon.setCursorPos(2, h - 2)
       mon.write((sel.blurb or ""):sub(1, w - 2))
     end
-    drawFooter(mon, w, h, "Up/Down Enter  1-7 open  X back  A board")
+    drawFooter(mon, w, h, "Up/Down Enter  1-8 open  X back  A board")
   end
 
   function self:onKey(key)
@@ -304,6 +305,406 @@ local function newLibrary(ctx)
 end
 
 -- ============================================================
+-- Quote Workshop (custom quotes: new / rewrite / enable)
+-- Customs default to OFF and only join the pool when enabled.
+-- ============================================================
+local function newWorkshop(ctx)
+  local CAT_ORDER = ctx.customCategories
+    or { "TIP", "DID YOU KNOW", "WISDOM", "LOADING", "QUOTE" }
+
+  local self = {
+    id = "workshop",
+    mode = "list",       -- list | edit | pick
+    cursor = 1,
+    scroll = 0,
+    pickCursor = 1,
+    pickScroll = 0,
+    editIdx = nil,       -- nil = creating new
+    editField = 1,       -- 1 text, 2 source, 3 category
+    draft = nil,         -- { text, source, category, enabled }
+  }
+
+  local function customs()
+    return ctx.customQuotes
+  end
+
+  local function builtins()
+    return ctx.BUILTIN_QUOTES or {}
+  end
+
+  local function enabledCount()
+    local n = 0
+    for _, q in ipairs(customs()) do
+      if q[4] == true then n = n + 1 end
+    end
+    return n
+  end
+
+  local function persist()
+    if ctx.saveCustomQuotes then ctx.saveCustomQuotes() end
+  end
+
+  local function beginEdit(idx, seed)
+    self.mode = "edit"
+    self.editIdx = idx
+    self.editField = 1
+    if seed then
+      self.draft = {
+        seed[1] or "",
+        seed[2] or "Custom",
+        seed[3] or "TIP",
+        seed[4] == true,
+      }
+    else
+      self.draft = { "", "Custom", "TIP", false }
+    end
+  end
+
+  local function cycleCategory(dir)
+    local cur = self.draft[3] or "TIP"
+    local idx = 1
+    for i, c in ipairs(CAT_ORDER) do
+      if c == cur then idx = i break end
+    end
+    idx = idx + (dir or 1)
+    if idx < 1 then idx = #CAT_ORDER end
+    if idx > #CAT_ORDER then idx = 1 end
+    self.draft[3] = CAT_ORDER[idx]
+  end
+
+  local function saveDraft()
+    local text = (self.draft[1] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    local source = (self.draft[2] or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if text == "" then
+      ctx.flash("Text required", 2000)
+      return false
+    end
+    if source == "" then source = "Custom" end
+    local row = { text, source, self.draft[3] or "TIP", self.draft[4] == true }
+    if ctx.normalizeCustomQuote then
+      row = ctx.normalizeCustomQuote(row) or row
+    end
+    local list = customs()
+    if self.editIdx and list[self.editIdx] then
+      list[self.editIdx] = row
+      ctx.flash(row[4] and "Saved (ON)" or "Saved (OFF)", 2000)
+    else
+      list[#list + 1] = row
+      self.cursor = #list
+      ctx.flash(row[4] and "Created (ON)" or "Created (OFF — enable with E)", 2500)
+    end
+    persist()
+    self.mode = "list"
+    self.draft = nil
+    self.editIdx = nil
+    return true
+  end
+
+  local function visibleCount(h)
+    return math.max(1, h - 6)
+  end
+
+  local function drawList(mon, w, h)
+    local list = customs()
+    local right = enabledCount() .. "/" .. #list .. " on"
+    drawHeader(mon, w, "QUOTE WORKSHOP", right)
+
+    if #list == 0 then
+      mon.setTextColour(colours.lightGrey)
+      mon.setCursorPos(2, 4)
+      mon.write("No custom quotes yet.")
+      mon.setCursorPos(2, 5)
+      mon.write("N new   B rewrite a builtin")
+      mon.setCursorPos(2, 6)
+      mon.write("New quotes stay OFF until enabled.")
+      drawFooter(mon, w, h, "N new  B from builtin  X back")
+      return
+    end
+
+    local vis = visibleCount(h)
+    self.cursor = clamp(self.cursor, 1, #list)
+    if self.cursor < self.scroll + 1 then self.scroll = self.cursor - 1 end
+    if self.cursor > self.scroll + vis then self.scroll = self.cursor - vis end
+    self.scroll = clamp(self.scroll, 0, math.max(0, #list - vis))
+
+    for row = 1, vis do
+      local idx = self.scroll + row
+      local q = list[idx]
+      if not q then break end
+      local mark = q[4] and "ON " or "off"
+      local preview = (q[1] or ""):gsub("%s+", " ")
+      local line = string.format("%s %s [%s] %s", mark, idx, q[3] or "?", preview)
+      local y = row + 2
+      if idx == self.cursor then
+        mon.setBackgroundColour(colours.grey)
+        mon.setTextColour(colours.yellow)
+        mon.setCursorPos(1, y)
+        mon.clearLine()
+        mon.setCursorPos(1, y)
+        mon.write((">" .. line):sub(1, w))
+        mon.setBackgroundColour(colours.black)
+      else
+        mon.setTextColour(q[4] and colours.lime or colours.lightGrey)
+        mon.setCursorPos(2, y)
+        mon.write(line:sub(1, w - 2))
+      end
+    end
+
+    local sel = list[self.cursor]
+    if sel and h >= 5 then
+      mon.setTextColour(colours.white)
+      mon.setCursorPos(2, h - 3)
+      mon.write(("— " .. (sel[2] or "")):sub(1, w - 2))
+    end
+    drawFooter(mon, w, h, "E on/off  R rewrite  N new  B builtin  D del")
+  end
+
+  local function drawEdit(mon, w, h)
+    local title = self.editIdx and "REWRITE QUOTE" or "NEW QUOTE"
+    local en = self.draft[4] and "ON" or "OFF"
+    drawHeader(mon, w, title, en)
+
+    local labels = { "Text", "Source", "Category" }
+    local values = {
+      self.draft[1] or "",
+      self.draft[2] or "",
+      self.draft[3] or "TIP",
+    }
+
+    for i = 1, 3 do
+      local y = 2 + i * 2
+      if y >= h - 2 then break end
+      local selected = (self.editField == i)
+      mon.setTextColour(selected and colours.yellow or colours.lightGrey)
+      mon.setCursorPos(2, y)
+      mon.write((labels[i] .. ":"))
+      mon.setTextColour(colours.white)
+      if selected then
+        mon.setBackgroundColour(colours.grey)
+        mon.setCursorPos(2, y + 1)
+        mon.clearLine()
+        mon.setCursorPos(2, y + 1)
+        local shown = values[i]
+        if i < 3 then shown = shown .. "_" end
+        mon.write(shown:sub(math.max(1, #shown - (w - 3)), #shown))
+        mon.setBackgroundColour(colours.black)
+      else
+        mon.setCursorPos(2, y + 1)
+        mon.write(values[i]:sub(1, w - 2))
+      end
+    end
+
+    mon.setTextColour(colours.lightGrey)
+    mon.setCursorPos(2, h - 2)
+    mon.write(("Tab fields  On Category: Left/Right / T on-off"):sub(1, w - 2))
+    drawFooter(mon, w, h, "Type to edit  Backspace erase  Enter save  X cancel")
+  end
+
+  local function drawPick(mon, w, h)
+    local list = builtins()
+    drawHeader(mon, w, "REWRITE BUILTIN", self.pickCursor .. "/" .. #list)
+
+    if #list == 0 then
+      mon.setTextColour(colours.red)
+      mon.setCursorPos(2, 4)
+      mon.write("No builtins.")
+      drawFooter(mon, w, h, "X back")
+      return
+    end
+
+    local vis = visibleCount(h)
+    self.pickCursor = clamp(self.pickCursor, 1, #list)
+    if self.pickCursor < self.pickScroll + 1 then self.pickScroll = self.pickCursor - 1 end
+    if self.pickCursor > self.pickScroll + vis then self.pickScroll = self.pickCursor - vis end
+    self.pickScroll = clamp(self.pickScroll, 0, math.max(0, #list - vis))
+
+    for row = 1, vis do
+      local idx = self.pickScroll + row
+      local q = list[idx]
+      if not q then break end
+      local preview = (q[1] or ""):gsub("%s+", " ")
+      local line = string.format("%s [%s] %s", idx, q[3] or "?", preview)
+      local y = row + 2
+      if idx == self.pickCursor then
+        mon.setBackgroundColour(colours.grey)
+        mon.setTextColour(colours.yellow)
+        mon.setCursorPos(1, y)
+        mon.clearLine()
+        mon.setCursorPos(1, y)
+        mon.write((">" .. line):sub(1, w))
+        mon.setBackgroundColour(colours.black)
+      else
+        mon.setTextColour(colours.white)
+        mon.setCursorPos(2, y)
+        mon.write(line:sub(1, w - 2))
+      end
+    end
+    drawFooter(mon, w, h, "Enter copy to workshop (starts OFF)  X back")
+  end
+
+  function self:draw(mon)
+    local w, h = mon.getSize()
+    mon.setBackgroundColour(colours.black)
+    mon.clear()
+    if self.mode == "edit" then
+      drawEdit(mon, w, h)
+    elseif self.mode == "pick" then
+      drawPick(mon, w, h)
+    else
+      drawList(mon, w, h)
+    end
+  end
+
+  function self:onChar(ch)
+    if self.mode ~= "edit" or type(ch) ~= "string" or #ch == 0 then return nil end
+    if self.editField == 3 then return "redraw" end  -- category via C / arrows
+    local field = self.editField
+    local cur = self.draft[field] or ""
+    if #cur >= 200 then return "redraw" end
+    self.draft[field] = cur .. ch
+    return "redraw"
+  end
+
+  function self:onKey(key)
+    if self.mode == "edit" then
+      if key == keys.x then
+        self.mode = "list"
+        self.draft = nil
+        self.editIdx = nil
+        return "redraw"
+      elseif key == keys.tab or key == keys.down then
+        self.editField = self.editField >= 3 and 1 or (self.editField + 1)
+        return "redraw"
+      elseif key == keys.up then
+        self.editField = self.editField <= 1 and 3 or (self.editField - 1)
+        return "redraw"
+      elseif key == keys.backspace then
+        if self.editField < 3 then
+          local cur = self.draft[self.editField] or ""
+          self.draft[self.editField] = cur:sub(1, math.max(0, #cur - 1))
+        end
+        return "redraw"
+      elseif key == keys.left or key == keys.right then
+        if self.editField == 3 then
+          cycleCategory(key == keys.left and -1 or 1)
+        end
+        return "redraw"
+      elseif key == keys.c then
+        -- Only when on Category (otherwise typing "c" would steal the key).
+        if self.editField == 3 then
+          cycleCategory(1)
+        end
+        return "redraw"
+      elseif key == keys.t then
+        if self.editField == 3 then
+          self.draft[4] = not self.draft[4]
+        end
+        return "redraw"
+      elseif key == keys.enter then
+        saveDraft()
+        return "redraw"
+      end
+      return "redraw"  -- swallow keys while editing (except globals Q/A)
+    end
+
+    if self.mode == "pick" then
+      local list = builtins()
+      if key == keys.x then
+        self.mode = "list"
+        return "redraw"
+      elseif key == keys.up then
+        self.pickCursor = clamp(self.pickCursor - 1, 1, math.max(1, #list))
+        return "redraw"
+      elseif key == keys.down then
+        self.pickCursor = clamp(self.pickCursor + 1, 1, math.max(1, #list))
+        return "redraw"
+      elseif key == keys.enter then
+        local q = list[self.pickCursor]
+        if q then
+          beginEdit(nil, { q[1], q[2], q[3], false })
+          ctx.flash("Rewrite starts OFF — enable when ready", 2500)
+        end
+        return "redraw"
+      end
+      return nil
+    end
+
+    -- list mode
+    local list = customs()
+    if key == keys.up then
+      if #list > 0 then self.cursor = clamp(self.cursor - 1, 1, #list) end
+      return "redraw"
+    elseif key == keys.down then
+      if #list > 0 then self.cursor = clamp(self.cursor + 1, 1, #list) end
+      return "redraw"
+    elseif key == keys.n then
+      beginEdit(nil, nil)
+      return "redraw"
+    elseif key == keys.b then
+      self.mode = "pick"
+      self.pickCursor = 1
+      self.pickScroll = 0
+      return "redraw"
+    elseif key == keys.e then
+      local q = list[self.cursor]
+      if q then
+        q[4] = not q[4]
+        persist()
+        ctx.flash(q[4] and "Enabled in pool" or "Disabled (hidden from pool)", 2000)
+      end
+      return "redraw"
+    elseif key == keys.r or key == keys.enter then
+      local q = list[self.cursor]
+      if q then beginEdit(self.cursor, q) end
+      return "redraw"
+    elseif key == keys.d or key == keys.delete then
+      if list[self.cursor] then
+        table.remove(list, self.cursor)
+        self.cursor = clamp(self.cursor, 1, math.max(1, #list))
+        persist()
+        ctx.flash("Deleted", 1500)
+      end
+      return "redraw"
+    end
+    return nil
+  end
+
+  function self:onTouch(x, y, w, h)
+    if self.mode == "edit" then
+      if y >= 4 and y <= 5 then self.editField = 1
+      elseif y >= 6 and y <= 7 then self.editField = 2
+      elseif y >= 8 and y <= 9 then self.editField = 3; cycleCategory(1)
+      end
+      return "redraw"
+    end
+    if self.mode == "pick" then
+      local row = y - 2
+      local vis = visibleCount(h)
+      if row >= 1 and row <= vis then
+        local idx = self.pickScroll + row
+        if builtins()[idx] then
+          self.pickCursor = idx
+          return self:onKey(keys.enter)
+        end
+      end
+      return nil
+    end
+    local row = y - 2
+    local vis = visibleCount(h)
+    if row >= 1 and row <= vis then
+      local idx = self.scroll + row
+      if customs()[idx] then
+        self.cursor = idx
+        return self:onKey(keys.e)
+      end
+    end
+    return nil
+  end
+
+  return self
+end
+
+-- ============================================================
 -- Chat Log
 -- ============================================================
 local function newChatLog(ctx)
@@ -476,6 +877,15 @@ local function newStats(ctx)
 
     local cats = catCounts()
     lines[#lines + 1] = ""
+    local customTotal, customOn = 0, 0
+    if ctx.customQuotes then
+      customTotal = #ctx.customQuotes
+      for _, q in ipairs(ctx.customQuotes) do
+        if q[4] == true then customOn = customOn + 1 end
+      end
+    end
+    lines[#lines + 1] = "Custom quotes: " .. customOn .. "/" .. customTotal .. " enabled"
+
     lines[#lines + 1] = "Categories:"
     for _, name in ipairs({ "TIP", "DID YOU KNOW", "WISDOM", "LOADING", "QUOTE", "PLAYER" }) do
       if cats[name] then
@@ -606,8 +1016,8 @@ local function newAbout(ctx)
       "HOI4-style tips on a monitor,",
       "with music and live chat.",
       "",
-      "Apps: jukebox, library, chat",
-      "log, clock, stats, dice.",
+      "Apps: jukebox, library, workshop,",
+      "chat log, clock, stats, dice.",
       "",
       #ctx.SONGS .. " songs  ·  " .. #ctx.allQuotes .. " quotes",
       "",
@@ -615,7 +1025,7 @@ local function newAbout(ctx)
       "H  controls help",
       "Q  quit",
       "",
-      "Chat: #apps #app jukebox",
+      "Chat: #apps #app workshop",
     }
     for i, line in ipairs(lines) do
       local y = i + 2
@@ -640,6 +1050,7 @@ local FACTORIES = {
   launcher = newLauncher,
   jukebox  = newJukebox,
   library  = newLibrary,
+  workshop = newWorkshop,
   chatlog  = newChatLog,
   clock    = newClock,
   stats    = newStats,
@@ -653,7 +1064,7 @@ function Apps.open(id, ctx)
 end
 
 function Apps.ids()
-  return { "jukebox", "library", "chatlog", "clock", "stats", "dice", "about" }
+  return { "jukebox", "library", "workshop", "chatlog", "clock", "stats", "dice", "about" }
 end
 
 return Apps

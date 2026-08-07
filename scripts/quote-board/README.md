@@ -80,11 +80,25 @@ Press `A` (or `#apps`) for the launcher. Quote rotation pauses while an app is o
 |-----|----------------|
 | **Jukebox** | Browse all tracks, Enter/tap to queue one now |
 | **Quote Library** | Flip through the pool; Enter pins one to the board |
+| **Quote Workshop** | Create, rewrite, and enable custom quotes (all start **off**) |
 | **Chat Log** | Newest player quotes; Enter pins to the board |
 | **Clock** | Large live clock + uptime |
 | **Stats** | Session counts, categories, playlist sizes |
 | **Dice** | Roll d2–d100 for the room |
 | **About** | Short board blurb |
+
+### Quote Workshop
+
+Custom quotes live in `quote-board-custom.dat` and **do not appear in the rotation until enabled**.
+
+| Key | Action |
+|-----|--------|
+| `N` | New quote (starts OFF) |
+| `B` | Copy a builtin to rewrite (starts OFF) |
+| `R` / Enter | Rewrite selected custom |
+| `E` | Toggle enabled in the pool |
+| `D` | Delete |
+| In editor | Type text/source; Tab fields; on Category use ←/→ and `T` for on/off; Enter save; X cancel |
 
 `X` returns to the launcher (or the board from the launcher). `A` always jumps back to the board.
 
@@ -146,6 +160,7 @@ Top of `quote-board.lua`:
 | File | Contents |
 |------|----------|
 | `quote-board-chat.dat` | Captured player quotes |
+| `quote-board-custom.dat` | Workshop customs (`text`, source, category, enabled) |
 | `quote-board-settings.dat` | Volume, mute, playlist, category filter |
 
 ## Layout
