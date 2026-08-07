@@ -255,6 +255,13 @@ end
 -- ============================================================
 -- Chat persistence
 -- ============================================================
+local function isValidQuote(q)
+  return type(q) == "table"
+    and type(q[1]) == "string" and q[1] ~= ""
+    and type(q[2]) == "string"
+    and type(q[3]) == "string" and q[3] ~= ""
+end
+
 local function loadChatQuotes()
   if not fs.exists(CHAT_FILE) then return end
   local f = fs.open(CHAT_FILE, "r")
@@ -262,8 +269,12 @@ local function loadChatQuotes()
   local raw = f.readAll()
   f.close()
   local ok, data = pcall(textutils.unserialise, raw)
-  if ok and type(data) == "table" then
-    chatQuotes = data
+  if not ok or type(data) ~= "table" then return end
+  chatQuotes = {}
+  for _, q in ipairs(data) do
+    if isValidQuote(q) then
+      chatQuotes[#chatQuotes + 1] = { q[1], q[2], q[3] }
+    end
   end
 end
 
@@ -277,18 +288,23 @@ end
 local function rebuildAllQuotes()
   allQuotes = {}
   for _, q in ipairs(BUILTIN_QUOTES) do
-    allQuotes[#allQuotes + 1] = q
+    if isValidQuote(q) then
+      allQuotes[#allQuotes + 1] = q
+    end
   end
   for _, q in ipairs(chatQuotes) do
     allQuotes[#allQuotes + 1] = q
   end
   state.chatCount = #chatQuotes
-  if state.quoteIdx > #allQuotes then
+  if #allQuotes == 0 then
+    state.quoteIdx = 1
+  elseif state.quoteIdx < 1 or state.quoteIdx > #allQuotes then
     state.quoteIdx = math.max(1, #allQuotes)
   end
 end
 
 local function isDuplicateChat(msg)
+  if #chatQuotes == 0 then return false end
   for i = #chatQuotes, math.max(1, #chatQuotes - 19), -1 do
     if chatQuotes[i][1] == msg then return true end
   end
@@ -303,30 +319,45 @@ local function scheduleNextQuote(seconds)
 end
 
 local function flash(msg, ms)
-  state.flashText = msg
+  state.flashText = tostring(msg or "")
   state.flashUntil = os.epoch("utc") + (ms or 3000)
   state.dirty = true
+end
+
+-- History stores quote snapshots so chat eviction cannot stale indices.
+local function pushHistoryQuote(q)
+  if not isValidQuote(q) then return end
+  state.history[#state.history + 1] = { q[1], q[2], q[3] }
+  if #state.history > 40 then table.remove(state.history, 1) end
 end
 
 local function addChatQuote(user, msg)
   if IGNORE_PLAYERS[user] then return false end
   if isDuplicateChat(msg) then return false end
 
+  local evicted = false
   if #chatQuotes >= MAX_CHAT_QUOTES then
     table.remove(chatQuotes, 1)
+    evicted = true
   end
   chatQuotes[#chatQuotes + 1] = { msg, user, "PLAYER" }
   saveChatQuotes()
+
+  local prev = allQuotes[state.quoteIdx]
   rebuildAllQuotes()
   state.chatCaptured = state.chatCaptured + 1
 
   if FRESH_CHAT_FOCUS and #allQuotes > 0 then
-    state.history[#state.history + 1] = state.quoteIdx
-    if #state.history > 40 then table.remove(state.history, 1) end
+    if prev then pushHistoryQuote(prev) end
     state.quoteIdx = #allQuotes
     state.quotesShown = state.quotesShown + 1
     scheduleNextQuote(QUOTE_INTERVAL)
     playTick()
+  elseif evicted then
+    -- Indices may have shifted; keep showing something valid.
+    if state.quoteIdx > #allQuotes then
+      state.quoteIdx = #allQuotes
+    end
   end
 
   flash("LIVE: " .. user, 4000)
@@ -611,16 +642,13 @@ local function drawScreenOn(mon, quote)
 end
 
 local function drawAll(quote)
-  if not quote then return end
+  if not isValidQuote(quote) then return end
   local list = monitors
   if not MIRROR_ALL_MONITORS and #list > 0 then
     list = { list[1] }
   end
   for _, mon in ipairs(list) do
-    local ok, err = pcall(drawScreenOn, mon, quote)
-    if not ok then
-      -- monitor may have been detached; ignore
-    end
+    pcall(drawScreenOn, mon, quote)
   end
 end
 
@@ -629,13 +657,27 @@ end
 -- ============================================================
 local function quoteMatchesFilter(q)
   if state.categoryFilter == "ALL" then return true end
-  return q[3] == state.categoryFilter
+  return isValidQuote(q) and q[3] == state.categoryFilter
+end
+
+local function ensureQuoteMatchesFilter()
+  local q = allQuotes[state.quoteIdx]
+  if isValidQuote(q) and quoteMatchesFilter(q) then return end
+  local matches = {}
+  for i, qq in ipairs(allQuotes) do
+    if quoteMatchesFilter(qq) then
+      matches[#matches + 1] = i
+    end
+  end
+  if #matches > 0 then
+    state.quoteIdx = matches[math.random(#matches)]
+  end
 end
 
 local function weightFor(i, currentIdx, currentCat)
   if i == currentIdx then return 0 end
   local q = allQuotes[i]
-  if not quoteMatchesFilter(q) then return 0 end
+  if not isValidQuote(q) or not quoteMatchesFilter(q) then return 0 end
   local cat = q[3]
   if cat == "PLAYER" and cat ~= currentCat then
     return PLAYER_CAT_WEIGHT
@@ -686,14 +728,18 @@ local function pickNextQuote(currentIdx)
   return lo
 end
 
-local function pushHistory(idx)
-  if not idx then return end
-  state.history[#state.history + 1] = idx
-  if #state.history > 40 then table.remove(state.history, 1) end
+local function findQuoteIndex(snapshot)
+  if not isValidQuote(snapshot) then return nil end
+  for i, q in ipairs(allQuotes) do
+    if q[1] == snapshot[1] and q[2] == snapshot[2] and q[3] == snapshot[3] then
+      return i
+    end
+  end
+  return nil
 end
 
 local function advanceQuote()
-  pushHistory(state.quoteIdx)
+  pushHistoryQuote(allQuotes[state.quoteIdx])
   state.quoteIdx = pickNextQuote(state.quoteIdx)
   state.quotesShown = state.quotesShown + 1
   state.scrollOffset = 0
@@ -702,15 +748,19 @@ local function advanceQuote()
 end
 
 local function previousQuote()
-  if #state.history == 0 then
-    flash("No history", 1500)
-    return
+  while #state.history > 0 do
+    local snapshot = table.remove(state.history)
+    local idx = findQuoteIndex(snapshot)
+    if idx then
+      state.quoteIdx = idx
+      state.quotesShown = state.quotesShown + 1
+      state.scrollOffset = 0
+      scheduleNextQuote(QUOTE_INTERVAL)
+      playTick()
+      return
+    end
   end
-  state.quoteIdx = table.remove(state.history)
-  state.quotesShown = state.quotesShown + 1
-  state.scrollOffset = 0
-  scheduleNextQuote(QUOTE_INTERVAL)
-  playTick()
+  flash("No history", 1500)
 end
 
 local function togglePause()
@@ -780,7 +830,9 @@ local function cyclePlaylist()
 end
 
 local function adjustVolume(delta)
-  state.volume = math.max(0, math.min(1, state.volume + delta))
+  -- Snap to tenths so repeated +/- does not accumulate float error.
+  local tenths = math.floor(state.volume * 10 + 0.5) + math.floor(delta * 10 + 0.5)
+  state.volume = math.max(0, math.min(1, tenths / 10))
   saveSettings()
   flash("Volume " .. math.floor(state.volume * 100 + 0.5) .. "%", 1500)
 end
@@ -938,24 +990,51 @@ local function shouldAbortPlayback()
   return (not state.running) or (not state.musicOn) or state.skipSong
 end
 
-local function coopSleep(seconds)
+-- Forward non-timer events to the UI loop without busy-spinning.
+-- abortFn: optional; when it returns true, sleep ends early.
+local function yieldSleep(seconds, abortFn)
   if seconds <= 0 then return end
   local tEnd = os.clock() + seconds
   while state.running and os.clock() < tEnd do
-    if shouldAbortPlayback() then return end
+    if abortFn and abortFn() then return end
     local slice = math.min(0.05, tEnd - os.clock())
     if slice <= 0 then return end
     local timerId = os.startTimer(slice)
     local ev = { os.pullEventRaw() }
     if ev[1] == "timer" and ev[2] == timerId then
-      -- ok
+      -- slice finished
     elseif ev[1] == "terminate" then
       state.running = false
       return
     else
+      -- Hand off to uiLoop; yield once more so it can drain the event.
       os.queueEvent(table.unpack(ev))
+      local handoff = os.startTimer(0)
+      while true do
+        local ev2 = { os.pullEventRaw() }
+        if ev2[1] == "timer" and ev2[2] == handoff then
+          break
+        elseif ev2[1] == "terminate" then
+          state.running = false
+          return
+        else
+          os.queueEvent(table.unpack(ev2))
+        end
+      end
     end
   end
+end
+
+-- Used during note playback — abort on mute/skip/quit.
+local function coopSleep(seconds)
+  yieldSleep(seconds, shouldAbortPlayback)
+end
+
+-- Used while muted / idle — must NOT treat mute as abort (that busy-loops).
+local function idleSleep(seconds)
+  yieldSleep(seconds, function()
+    return not state.running
+  end)
 end
 
 -- ============================================================
@@ -1084,7 +1163,7 @@ end
 
 local function musicLoop(spkList)
   if #spkList == 0 then
-    while state.running do coopSleep(0.5) end
+    while state.running do idleSleep(0.5) end
     return
   end
 
@@ -1094,11 +1173,13 @@ local function musicLoop(spkList)
   while state.running do
     if not state.musicOn then
       state.songName = "muted"
+      state.dirty = true
       stopSpeakers(spkList)
       while state.running and not state.musicOn do
-        coopSleep(0.2)
+        idleSleep(0.2)
       end
       if not state.running then break end
+      state.skipSong = false
     end
 
     state.skipSong = false
@@ -1118,20 +1199,24 @@ local function musicLoop(spkList)
     lastIdx = idx
 
     local song = SONGS[idx]
-    state.songName = song.name or ("song " .. idx)
-    state.dirty = true
-
-    local ok = pcall(playSong, song, spkList)
-    if not ok then
-      state.songName = "err"
+    if not song then
+      idleSleep(0.5)
+    else
+      state.songName = song.name or ("song " .. idx)
       state.dirty = true
-      coopSleep(0.5)
+
+      local ok = pcall(playSong, song, spkList)
+      if not ok then
+        state.songName = "err"
+        state.dirty = true
+        idleSleep(0.5)
+      end
     end
 
     if state.skipSong or not state.musicOn then
       state.skipSong = false
       stopSpeakers(spkList)
-      coopSleep(0.05)
+      idleSleep(0.05)
     end
   end
 
@@ -1191,6 +1276,7 @@ local function main()
   assert(#SONGS > 0, "No songs available.")
   math.randomseed(os.epoch("utc"))
   state.quoteIdx = math.random(#allQuotes)
+  ensureQuoteMatchesFilter()
   state.startedAt = os.epoch("utc")
 
   local attached = peripheral.getNames()
