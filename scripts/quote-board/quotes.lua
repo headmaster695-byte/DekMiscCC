@@ -60,6 +60,46 @@ local BUILTIN_QUOTES = {
     "Mark your mineshaft entrance. Future you is an idiot and will thank you.",
     "The Game", "TIP"
   },
+  {
+    "F3 shows your coordinates. It also shows how far you are from admitting you are lost.",
+    "The Game", "TIP"
+  },
+  {
+    "Put your valuables in an ender chest. Put a second copy somewhere you will forget exists.",
+    "The Game", "TIP"
+  },
+  {
+    "Shields block arrows. They do not block the feeling of being outplayed by a skeleton.",
+    "The Game", "TIP"
+  },
+  {
+    "Sprint-jumping is faster. Your hunger bar has opinions about this.",
+    "The Game", "TIP"
+  },
+  {
+    "Never fight the Wither in your base. Your base will become a crater with opinions.",
+    "The Game", "TIP"
+  },
+  {
+    "Mine gold in the Nether. Die in the Nether. The gold stays. You do not.",
+    "The Game", "TIP"
+  },
+  {
+    "A boat on blue ice is the fastest legitimate travel in the game. 'Legitimate' is doing a lot of work there.",
+    "The Game", "TIP"
+  },
+  {
+    "Light your farms. Mobs do not care that you were 'just AFK for a minute'.",
+    "The Game", "TIP"
+  },
+  {
+    "Bring blocks when bridging. Bring more blocks than that. Then bring a water bucket for when those run out.",
+    "The Game", "TIP"
+  },
+  {
+    "Smite is for undead. Sharpness is for everything else. Your inventory is for carrying both and still picking wrong.",
+    "The Game", "TIP"
+  },
 
   -- DID YOU KNOW ─────────────────────────────────────────────
   {
@@ -110,6 +150,38 @@ local BUILTIN_QUOTES = {
     "A compass points to your world spawn. It does not point to where you left your diamonds.",
     "Navigation", "DID YOU KNOW"
   },
+  {
+    "Ghasts cry when idle. They scream when shooting. Both are about you, specifically.",
+    "Nether psychology", "DID YOU KNOW"
+  },
+  {
+    "Shulkers teleport when low on health. So will your armour durability.",
+    "End city FAQ", "DID YOU KNOW"
+  },
+  {
+    "Bees get angry if you harvest honey without a campfire. They remember. Forever.",
+    "Apiary handbook", "DID YOU KNOW"
+  },
+  {
+    "The Warden is blind. It hears everything. Whispering does not help; you already stomped.",
+    "Deep Dark tourism", "DID YOU KNOW"
+  },
+  {
+    "Frogs eat magma cubes and drop froglights. Nature's economy makes more sense than yours.",
+    "Swamp ledger", "DID YOU KNOW"
+  },
+  {
+    "Allays deliver items to note blocks. They will not deliver your dignity after you lost a fight to a baby zombie.",
+    "Helper mobs", "DID YOU KNOW"
+  },
+  {
+    "Ancient debris is blast-resistant. You are not. Plan accordingly.",
+    "Nether mining tips", "DID YOU KNOW"
+  },
+  {
+    "Goats ram you off cliffs for sport. The mountains did not invite you; the goats noticed anyway.",
+    "Alpine hazards", "DID YOU KNOW"
+  },
 
   -- WISDOM ───────────────────────────────────────────────────
   {
@@ -152,6 +224,34 @@ local BUILTIN_QUOTES = {
     "Share your base coordinates with people you trust. Hide a second stash anyway.",
     "Multiplayer survival", "WISDOM"
   },
+  {
+    "If you hear a creeper and you cannot see a creeper, you are standing too close to a creeper.",
+    "Auditory survival", "WISDOM"
+  },
+  {
+    "Enchant before you need to. Panic-enchanting at half a heart is how you get Projectile Protection on boots.",
+    "Anvil regrets", "WISDOM"
+  },
+  {
+    "The shortest path between two bases is a straight line. The safest path is the one with torches.",
+    "Road builders' guild", "WISDOM"
+  },
+  {
+    "Backup your world. The universe does not owe you an undo button.",
+    "Hardcore alumni", "WISDOM"
+  },
+  {
+    "A full set of netherite will not save a full set of bad decisions.",
+    "Gear check", "WISDOM"
+  },
+  {
+    "AFK farms generate loot. They also generate the question of what you are doing with your life.",
+    "Automation philosophy", "WISDOM"
+  },
+  {
+    "Talk before you PvP. Or don't. The graveyard has room either way.",
+    "Server diplomacy", "WISDOM"
+  },
 
   -- LOADING ──────────────────────────────────────────────────
   {
@@ -181,6 +281,26 @@ local BUILTIN_QUOTES = {
   {
     "Preparing spawn area. Creepers have already moved in.",
     "Worldgen", "LOADING"
+  },
+  {
+    "Calibrating villager prices... they know what diamond armour is worth...",
+    "Economy", "LOADING"
+  },
+  {
+    "Spawning pigs. One of them has opinions about your farm layout.",
+    "Mob AI", "LOADING"
+  },
+  {
+    "Loading resource packs. Your FPS would like a word.",
+    "Client", "LOADING"
+  },
+  {
+    "Applying shaders... reality was optional anyway...",
+    "Iris / OptiFine alliance", "LOADING"
+  },
+  {
+    "Syncing player data. Please do not Alt+F4. We are begging.",
+    "Server", "LOADING"
   },
 
   -- QUOTE ────────────────────────────────────────────────────
@@ -304,6 +424,54 @@ local BUILTIN_QUOTES = {
   {
     "Keep your friends close and your enemies closer.",
     "Sun Tzu / The Godfather (pick your favourite)", "QUOTE"
+  },
+  {
+    "Winter is coming.",
+    "House Stark (and every Minecraft player without a coat)", "QUOTE"
+  },
+  {
+    "I am become Death, the destroyer of worlds.",
+    "Oppenheimer (also every kid with a bucket of lava)", "QUOTE"
+  },
+  {
+    "One does not simply walk into Mordor.",
+    "Boromir (one does simply boat into the Nether roof though)", "QUOTE"
+  },
+  {
+    "With great power comes great responsibility.",
+    "Uncle Ben (ignored by anyone holding a trident)", "QUOTE"
+  },
+  {
+    "I'll be back.",
+    "The Terminator (said every player after a lava death)", "QUOTE"
+  },
+  {
+    "May the Force be with you.",
+    "Star Wars (the Force does not refill your hunger bar)", "QUOTE"
+  },
+  {
+    "There's no place like home.",
+    "Dorothy (unless home is currently on fire)", "QUOTE"
+  },
+  {
+    "To infinity... and beyond!",
+    "Buzz Lightyear (void travel not recommended)", "QUOTE"
+  },
+  {
+    "Life finds a way.",
+    "Dr. Ian Malcolm (so do phantoms)", "QUOTE"
+  },
+  {
+    "Why so serious?",
+    "The Joker (asked by every creeper behind you)", "QUOTE"
+  },
+  {
+    "Just keep swimming.",
+    "Dory (excellent advice until the drowned arrive)", "QUOTE"
+  },
+  {
+    "This is the way.",
+    "The Mandalorian (the way was the wrong ravine)", "QUOTE"
   },
 }
 
