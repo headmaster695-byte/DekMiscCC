@@ -523,7 +523,7 @@ local function drawHelp(mon, w, h)
     "H help     Q quit",
     "Touch monitor = next",
     "",
-    "Chat: #apps #app jukebox",
+    "Chat: #apps #app workshop",
     "      #next #skip #mute",
     "      #vol 50 #playlist",
     "",
