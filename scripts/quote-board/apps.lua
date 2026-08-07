@@ -486,7 +486,7 @@ local function newStats(ctx)
     local pls = playlistCounts()
     lines[#lines + 1] = ""
     lines[#lines + 1] = "Playlists:"
-    for _, name in ipairs({ "title", "elevator", "zelda", "runescape", "original" }) do
+    for _, name in ipairs({ "title", "elevator", "zelda", "runescape", "undertale", "original" }) do
       if pls[name] then
         lines[#lines + 1] = "  " .. name .. ": " .. pls[name]
       end

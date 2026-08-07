@@ -106,10 +106,10 @@ Press `A` (or `#apps`) for the launcher. Quote rotation pauses while an app is o
 - Persisted in `quote-board-chat.dat`
 
 ### Music
-- **43 tracks** across elevator, Zelda-inspired, RuneScape-inspired, and original playlists
+- **60 tracks** across elevator, Zelda-inspired, RuneScape-inspired, Undertale-inspired (remixes + originals), and original playlists
 - **A New Start** always plays first after boot
 - Shuffle bag (no repeats until the bag empties)
-- Playlists (`L` / `#playlist`): All / Elevator / Zelda-inspired / RuneScape-inspired / Originals / Title only
+- Playlists (`L` / `#playlist`): All / Elevator / Zelda-inspired / RuneScape-inspired / Undertale-inspired / Originals / Title only
 - Volume control + mute; settings persist in `quote-board-settings.dat`
 - **True polyphony:** simultaneous chord notes are fired in one tick (CC allows 8 `playNote`s/speaker/tick); with enough speakers, each voice gets a dedicated speaker (`3v | 4spk` in the footer)
 - Interruptible playback (skip/mute/chat never get swallowed)
