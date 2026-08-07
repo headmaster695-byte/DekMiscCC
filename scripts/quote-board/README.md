@@ -83,9 +83,10 @@ Normal chat (not a command, long enough, not `/` or `!`) is captured as a `[ PLA
 - Persisted in `quote-board-chat.dat`
 
 ### Music
+- **33 tracks** across elevator, Zelda-inspired, and original playlists
 - **A New Start** always plays first after boot
 - Shuffle bag (no repeats until the bag empties)
-- Playlists: All / Elevator / Zelda-inspired / Originals / Title only
+- Playlists (`L` / `#playlist`): All / Elevator / Zelda-inspired / Originals / Title only
 - Volume control + mute; settings persist in `quote-board-settings.dat`
 - Interruptible timeline playback (skip/mute/chat never get swallowed)
 
