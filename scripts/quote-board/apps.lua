@@ -73,6 +73,7 @@ local function newLauncher(ctx)
       { id = "jukebox",  title = "Jukebox",        blurb = "Browse and queue songs" },
       { id = "library",  title = "Quote Library",  blurb = "Browse the quote pool" },
       { id = "workshop", title = "Quote Workshop", blurb = "New / rewrite / enable customs" },
+      { id = "scenes",   title = "Atmospheres",    blurb = "Scenes: playlist + quotes + title" },
       { id = "chatlog",  title = "Chat Log",       blurb = "Recent player quotes" },
       { id = "clock",    title = "Clock",          blurb = "Large clock display" },
       { id = "stats",    title = "Stats",          blurb = "Session and library info" },
@@ -100,7 +101,7 @@ local function newLauncher(ctx)
       mon.setCursorPos(2, h - 2)
       mon.write((sel.blurb or ""):sub(1, w - 2))
     end
-    drawFooter(mon, w, h, "Up/Down Enter  1-8 open  X back  A board")
+    drawFooter(mon, w, h, "Up/Down Enter  1-9 open  X back  A board")
   end
 
   function self:onKey(key)
@@ -705,6 +706,406 @@ local function newWorkshop(ctx)
 end
 
 -- ============================================================
+-- Atmospheres (scenes): playlist + category + title bundles
+-- ============================================================
+local function newScenes(ctx)
+  local PLAYLISTS = ctx.playlistOrder
+    or { "all", "elevator", "zelda", "runescape", "undertale", "original", "title" }
+  local CATS = ctx.categoryOrder
+    or { "ALL", "TIP", "DID YOU KNOW", "WISDOM", "LOADING", "QUOTE", "PLAYER" }
+
+  local self = {
+    id = "scenes",
+    mode = "list", -- list | edit
+    cursor = 1,
+    scroll = 0,
+    editIdx = nil,   -- index into customScenes, or nil for new
+    editField = 1,
+    draft = nil,
+  }
+
+  local FIELD_LABELS = {
+    "Name", "Title", "Blurb", "Playlist", "Category", "From hour", "To hour",
+  }
+
+  local function scenes()
+    return ctx.listScenes and ctx.listScenes() or {}
+  end
+
+  local function customs()
+    return ctx.customScenes or {}
+  end
+
+  local function hourLabel(scene)
+    if type(scene.fromHour) ~= "number" or type(scene.toHour) ~= "number" then
+      return "manual"
+    end
+    return string.format("%02d-%02d", scene.fromHour, scene.toHour)
+  end
+
+  local function beginEdit(customIndex, seed)
+    self.mode = "edit"
+    self.editIdx = customIndex
+    self.editField = 1
+    seed = seed or {}
+    self.draft = {
+      name = seed.name or "New Scene",
+      title = seed.title or "",
+      blurb = seed.blurb or "",
+      playlist = seed.playlist or "all",
+      category = seed.category or "ALL",
+      fromHour = seed.fromHour, -- may be nil
+      toHour = seed.toHour,
+      priority = seed.priority or 3,
+      id = seed.id,
+    }
+  end
+
+  local function fieldValue(i)
+    local d = self.draft
+    if i == 1 then return d.name or ""
+    elseif i == 2 then return d.title or ""
+    elseif i == 3 then return d.blurb or ""
+    elseif i == 4 then return d.playlist or "all"
+    elseif i == 5 then return d.category or "ALL"
+    elseif i == 6 then
+      return d.fromHour ~= nil and tostring(d.fromHour) or "off"
+    elseif i == 7 then
+      return d.toHour ~= nil and tostring(d.toHour) or "off"
+    end
+    return ""
+  end
+
+  local function cycleList(list, cur, dir)
+    local idx = 1
+    for i, v in ipairs(list) do
+      if v == cur then idx = i break end
+    end
+    idx = idx + (dir or 1)
+    if idx < 1 then idx = #list end
+    if idx > #list then idx = 1 end
+    return list[idx]
+  end
+
+  local function nudgeHour(field, dir)
+    local key = field == 6 and "fromHour" or "toHour"
+    local cur = self.draft[key]
+    if cur == nil then
+      self.draft.fromHour = self.draft.fromHour or 0
+      self.draft.toHour = self.draft.toHour or 6
+      return
+    end
+    cur = cur + (dir or 1)
+    if cur < 0 then cur = 23 end
+    if cur > 23 then cur = 0 end
+    self.draft[key] = cur
+  end
+
+  local function saveDraft()
+    local name = (self.draft.name or ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if name == "" then
+      ctx.flash("Name required", 2000)
+      return false
+    end
+    local row = {
+      id = self.draft.id,
+      name = name,
+      title = self.draft.title or "",
+      blurb = self.draft.blurb or "",
+      playlist = self.draft.playlist or "all",
+      category = self.draft.category or "ALL",
+      fromHour = self.draft.fromHour,
+      toHour = self.draft.toHour,
+      priority = self.draft.priority or 3,
+      custom = true,
+    }
+    if not row.id or row.id == "" then
+      row.id = (ctx.slugify and ctx.slugify(name)) or name:lower()
+    end
+    if ctx.normalizeScene then
+      row = ctx.normalizeScene(row) or row
+      row.custom = true
+    end
+    local list = customs()
+    if self.editIdx and list[self.editIdx] then
+      list[self.editIdx] = row
+      ctx.flash("Scene saved", 2000)
+    else
+      -- ensure unique id
+      local base, n = row.id, 2
+      while true do
+        local clash = false
+        for _, s in ipairs(scenes()) do
+          if s.id == row.id then clash = true break end
+        end
+        if not clash then break end
+        row.id = base .. "-" .. n
+        n = n + 1
+      end
+      list[#list + 1] = row
+      ctx.flash("Scene created", 2000)
+    end
+    if ctx.saveCustomScenes then ctx.saveCustomScenes() end
+    self.mode = "list"
+    self.draft = nil
+    self.editIdx = nil
+    return true
+  end
+
+  local function visibleCount(h)
+    return math.max(1, h - 6)
+  end
+
+  local function findCustomIndexById(id)
+    for i, s in ipairs(customs()) do
+      if s.id == id then return i end
+    end
+    return nil
+  end
+
+  local function drawList(mon, w, h)
+    local list = scenes()
+    local hour = ctx.minecraftHour and string.format("%.0f", ctx.minecraftHour()) or "?"
+    local right = (ctx.state.sceneAuto and "AUTO" or "manual") .. " h" .. hour
+    drawHeader(mon, w, "ATMOSPHERES", right)
+
+    if #list == 0 then
+      mon.setTextColour(colours.lightGrey)
+      mon.setCursorPos(2, 4)
+      mon.write("No scenes.")
+      drawFooter(mon, w, h, "N new  X back")
+      return
+    end
+
+    local vis = visibleCount(h)
+    self.cursor = clamp(self.cursor, 1, #list)
+    if self.cursor < self.scroll + 1 then self.scroll = self.cursor - 1 end
+    if self.cursor > self.scroll + vis then self.scroll = self.cursor - vis end
+    self.scroll = clamp(self.scroll, 0, math.max(0, #list - vis))
+
+    for row = 1, vis do
+      local idx = self.scroll + row
+      local s = list[idx]
+      if not s then break end
+      local mark = (ctx.state.sceneId == s.id) and "*" or " "
+      local kind = s.custom and "c" or "b"
+      local line = string.format("%s%s %-14s %s [%s]", mark, kind, (s.name or "?"):sub(1, 14), hourLabel(s), s.playlist or "?")
+      local y = row + 2
+      if idx == self.cursor then
+        mon.setBackgroundColour(colours.grey)
+        mon.setTextColour(colours.yellow)
+        mon.setCursorPos(1, y)
+        mon.clearLine()
+        mon.setCursorPos(1, y)
+        mon.write((">" .. line):sub(1, w))
+        mon.setBackgroundColour(colours.black)
+      else
+        mon.setTextColour(colours.white)
+        mon.setCursorPos(2, y)
+        mon.write(line:sub(1, w - 2))
+      end
+    end
+
+    local sel = list[self.cursor]
+    if sel and h >= 5 then
+      mon.setTextColour(colours.lightGrey)
+      mon.setCursorPos(2, h - 3)
+      local blurb = sel.blurb or ""
+      if blurb == "" then
+        blurb = (sel.category or "ALL") .. " quotes"
+      end
+      mon.write(blurb:sub(1, w - 2))
+    end
+    drawFooter(mon, w, h, "Enter on  T auto  N new  R edit  B clone  D del")
+  end
+
+  local function drawEdit(mon, w, h)
+    drawHeader(mon, w, self.editIdx and "EDIT SCENE" or "NEW SCENE", "custom")
+    for i = 1, #FIELD_LABELS do
+      local y = 2 + i
+      if y >= h - 2 then break end
+      local selected = (self.editField == i)
+      local label = FIELD_LABELS[i]
+      local value = fieldValue(i)
+      if selected then
+        mon.setBackgroundColour(colours.grey)
+        mon.setTextColour(colours.yellow)
+        mon.setCursorPos(1, y)
+        mon.clearLine()
+        mon.setCursorPos(2, y)
+        local shown = label .. ": " .. value
+        if i <= 3 then shown = shown .. "_" end
+        mon.write(shown:sub(1, w - 2))
+        mon.setBackgroundColour(colours.black)
+      else
+        mon.setTextColour(colours.white)
+        mon.setCursorPos(2, y)
+        mon.write((label .. ": " .. value):sub(1, w - 2))
+      end
+    end
+    mon.setTextColour(colours.lightGrey)
+    mon.setCursorPos(2, h - 2)
+    mon.write(("Tab field  Left/Right cycle  Enter save"):sub(1, w - 2))
+    drawFooter(mon, w, h, "Type name/title/blurb  O clear hours  X cancel")
+  end
+
+  function self:draw(mon)
+    local w, h = mon.getSize()
+    mon.setBackgroundColour(colours.black)
+    mon.clear()
+    if self.mode == "edit" then
+      drawEdit(mon, w, h)
+    else
+      drawList(mon, w, h)
+    end
+  end
+
+  function self:onChar(ch)
+    if self.mode ~= "edit" or type(ch) ~= "string" or #ch == 0 then return nil end
+    if self.editField > 3 then return "redraw" end
+    local keys_ = { "name", "title", "blurb" }
+    local k = keys_[self.editField]
+    local cur = self.draft[k] or ""
+    if #cur >= 60 then return "redraw" end
+    self.draft[k] = cur .. ch
+    return "redraw"
+  end
+
+  function self:onKey(key)
+    if self.mode == "edit" then
+      if key == keys.x then
+        self.mode = "list"
+        self.draft = nil
+        self.editIdx = nil
+        return "redraw"
+      elseif key == keys.tab or key == keys.down then
+        self.editField = self.editField >= #FIELD_LABELS and 1 or (self.editField + 1)
+        return "redraw"
+      elseif key == keys.up then
+        self.editField = self.editField <= 1 and #FIELD_LABELS or (self.editField - 1)
+        return "redraw"
+      elseif key == keys.backspace then
+        if self.editField <= 3 then
+          local keys_ = { "name", "title", "blurb" }
+          local k = keys_[self.editField]
+          local cur = self.draft[k] or ""
+          self.draft[k] = cur:sub(1, math.max(0, #cur - 1))
+        end
+        return "redraw"
+      elseif key == keys.left or key == keys.right then
+        local dir = key == keys.left and -1 or 1
+        if self.editField == 4 then
+          self.draft.playlist = cycleList(PLAYLISTS, self.draft.playlist, dir)
+        elseif self.editField == 5 then
+          self.draft.category = cycleList(CATS, self.draft.category, dir)
+        elseif self.editField == 6 or self.editField == 7 then
+          nudgeHour(self.editField, dir)
+        end
+        return "redraw"
+      elseif key == keys.o then
+        self.draft.fromHour, self.draft.toHour = nil, nil
+        return "redraw"
+      elseif key == keys.enter then
+        saveDraft()
+        return "redraw"
+      end
+      return "redraw"
+    end
+
+    local list = scenes()
+    if key == keys.up then
+      if #list > 0 then self.cursor = clamp(self.cursor - 1, 1, #list) end
+      return "redraw"
+    elseif key == keys.down then
+      if #list > 0 then self.cursor = clamp(self.cursor + 1, 1, #list) end
+      return "redraw"
+    elseif key == keys.enter then
+      local s = list[self.cursor]
+      if s and ctx.applyScene then
+        return ctx.applyScene(s) or "redraw"
+      end
+      return "redraw"
+    elseif key == keys.t then
+      if ctx.toggleSceneAuto then
+        return ctx.toggleSceneAuto() or "redraw"
+      end
+      return "redraw"
+    elseif key == keys.c then
+      if ctx.clearScene then return ctx.clearScene() or "redraw" end
+      return "redraw"
+    elseif key == keys.n then
+      beginEdit(nil, nil)
+      return "redraw"
+    elseif key == keys.b then
+      local s = list[self.cursor]
+      if s then
+        local copy = {
+          name = (s.name or "Scene") .. " Copy",
+          title = s.title, blurb = s.blurb,
+          playlist = s.playlist, category = s.category,
+          fromHour = s.fromHour, toHour = s.toHour,
+          priority = s.priority or 3,
+        }
+        beginEdit(nil, copy)
+      end
+      return "redraw"
+    elseif key == keys.r then
+      local s = list[self.cursor]
+      if not s then return "redraw" end
+      if s.custom then
+        local idx = findCustomIndexById(s.id)
+        if idx then beginEdit(idx, customs()[idx]) end
+      else
+        ctx.flash("Builtin — press B to clone", 2000)
+      end
+      return "redraw"
+    elseif key == keys.d or key == keys.delete then
+      local s = list[self.cursor]
+      if s and s.custom then
+        local idx = findCustomIndexById(s.id)
+        if idx then
+          table.remove(customs(), idx)
+          if ctx.saveCustomScenes then ctx.saveCustomScenes() end
+          if ctx.state.sceneId == s.id and ctx.clearScene then ctx.clearScene() end
+          ctx.flash("Deleted", 1500)
+          self.cursor = clamp(self.cursor, 1, math.max(1, #scenes()))
+        end
+      elseif s then
+        ctx.flash("Can't delete builtins", 2000)
+      end
+      return "redraw"
+    end
+    return nil
+  end
+
+  function self:onTouch(x, y, w, h)
+    if self.mode == "edit" then
+      local idx = y - 2
+      if idx >= 1 and idx <= #FIELD_LABELS then
+        self.editField = idx
+        if idx >= 4 then
+          return self:onKey(keys.right)
+        end
+        return "redraw"
+      end
+      return nil
+    end
+    local row = y - 2
+    local vis = visibleCount(h)
+    if row >= 1 and row <= vis then
+      local idx = self.scroll + row
+      if scenes()[idx] then
+        self.cursor = idx
+        return self:onKey(keys.enter)
+      end
+    end
+    return nil
+  end
+
+  return self
+end
+
+-- ============================================================
 -- Chat Log
 -- ============================================================
 local function newChatLog(ctx)
@@ -871,6 +1272,8 @@ local function newStats(ctx)
       "Volume:        " .. math.floor(ctx.state.volume * 100 + 0.5) .. "%",
       "Playlist:      " .. (ctx.playlistLabel(ctx.state.playlist) or ctx.state.playlist),
       "Filter:        " .. tostring(ctx.state.categoryFilter),
+      "Scene:         " .. tostring(ctx.state.sceneName or "(none)"),
+      "Scene auto:    " .. (ctx.state.sceneAuto and "ON" or "off"),
       "Music:         " .. (ctx.state.musicOn and "on" or "muted"),
       "Now:           " .. tostring(ctx.state.songName),
     }
@@ -1017,15 +1420,15 @@ local function newAbout(ctx)
       "with music and live chat.",
       "",
       "Apps: jukebox, library, workshop,",
-      "chat log, clock, stats, dice.",
+      "atmospheres, chat, clock, stats.",
       "",
       #ctx.SONGS .. " songs  ·  " .. #ctx.allQuotes .. " quotes",
       "",
       "A  app launcher",
-      "H  controls help",
+      "S  cycle atmosphere",
       "Q  quit",
       "",
-      "Chat: #apps #app workshop",
+      "Chat: #scene dusk  #scene auto",
     }
     for i, line in ipairs(lines) do
       local y = i + 2
@@ -1051,6 +1454,7 @@ local FACTORIES = {
   jukebox  = newJukebox,
   library  = newLibrary,
   workshop = newWorkshop,
+  scenes   = newScenes,
   chatlog  = newChatLog,
   clock    = newClock,
   stats    = newStats,
@@ -1064,7 +1468,7 @@ function Apps.open(id, ctx)
 end
 
 function Apps.ids()
-  return { "jukebox", "library", "workshop", "chatlog", "clock", "stats", "dice", "about" }
+  return { "jukebox", "library", "workshop", "scenes", "chatlog", "clock", "stats", "dice", "about" }
 end
 
 return Apps

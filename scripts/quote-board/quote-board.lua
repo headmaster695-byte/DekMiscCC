@@ -11,11 +11,11 @@
 --   R next quote     P previous      Space pause/resume quotes
 --   N skip song      M mute/unmute   -/= volume down/up
 --   C category filter  L playlist     H help overlay
---   A apps launcher  X back/home     Q quit
+--   S atmosphere scene   A apps launcher  X back/home  Q quit
 --   Monitor touch = next quote (or app UI)
 -- Chat commands (prefix '#'):
 --   #next #prev #pause #skip #mute #vol <0-100> #cat #playlist
---   #help #stats #apps #app <name> #home
+--   #scene [name|auto|list|clear]  #help #stats #apps #app <name> #home
 
 -- ============================================================
 -- Configuration
@@ -25,7 +25,9 @@ local QUOTE_INTERVAL      = 15
 local MONITOR_SCALE       = 0.5
 local CHAT_FILE           = "quote-board-chat.dat"
 local CUSTOM_FILE         = "quote-board-custom.dat"
+local SCENES_FILE         = "quote-board-scenes.dat"
 local SETTINGS_FILE       = "quote-board-settings.dat"
+local SCENE_AUTO_DEFAULT  = false          -- daypart switching off until enabled
 local MAX_CHAT_QUOTES     = 50
 local MIN_MSG_LEN         = 10
 local CHAT_BOX_NAME       = ""
@@ -99,6 +101,54 @@ local PLAYLIST_LABEL = {
   title     = "Title only",
 }
 
+-- Atmosphere scenes: playlist + quote filter (+ optional title) bundles.
+-- fromHour/toHour are Minecraft hours via os.time() (0–24); nil = manual-only.
+-- Overnight windows allowed when fromHour > toHour (e.g. 21→5).
+local BUILTIN_SCENES = {
+  {
+    id = "dawn", name = "Morning Briefing",
+    title = "MORNING BRIEFING", playlist = "elevator", category = "TIP",
+    blurb = "Coffee, tips, and soft loops.",
+    fromHour = 5, toHour = 11, priority = 2,
+  },
+  {
+    id = "day", name = "Open World",
+    title = "OPEN WORLD", playlist = "zelda", category = "ALL",
+    blurb = "Explore the map. Touch grass (or dirt).",
+    fromHour = 11, toHour = 17, priority = 2,
+  },
+  {
+    id = "dusk", name = "Ember Hours",
+    title = "EMBER HOURS", playlist = "runescape", category = "WISDOM",
+    blurb = "Golden light and old tunes.",
+    fromHour = 17, toHour = 21, priority = 2,
+  },
+  {
+    id = "night", name = "Underground",
+    title = "UNDERGROUND", playlist = "undertale", category = "QUOTE",
+    blurb = "Torches low. Determination high.",
+    fromHour = 21, toHour = 5, priority = 2,
+  },
+  {
+    id = "focus", name = "Deep Work",
+    title = "DEEP WORK", playlist = "original", category = "DID YOU KNOW",
+    blurb = "Manual focus mode. No daypart.",
+    priority = 5,
+  },
+  {
+    id = "party", name = "Raid Night",
+    title = "RAID NIGHT", playlist = "all", category = "PLAYER",
+    blurb = "Chat owns the board. Loud optional.",
+    priority = 5,
+  },
+  {
+    id = "quiet", name = "Quiet Hours",
+    title = "QUIET HOURS", playlist = "title", category = "LOADING",
+    blurb = "Title track only. Keep it down.",
+    priority = 4,
+  },
+}
+
 local function songPlaylist(idx, song)
   if idx == TITLE_SONG_IDX then return "title" end
   if type(song.playlist) == "string" and PLAYLIST_LABEL[song.playlist] then
@@ -127,6 +177,7 @@ end
 local allQuotes    = {}
 local chatQuotes   = {}
 local customQuotes = {}  -- { text, source, category, enabled } ; enabled defaults false
+local customScenes = {}  -- user atmosphere scenes
 local speakers     = {}
 local monitors     = {}
 
@@ -161,6 +212,11 @@ local state = {
   appId         = nil,
   polyVoices    = 0,            -- voices in the current song
   polySpeakers  = 0,            -- speakers used for current song
+  sceneId       = nil,          -- active atmosphere id
+  sceneName     = nil,
+  sceneTitle    = nil,          -- header override (nil = BOARD_TITLE)
+  sceneAuto     = SCENE_AUTO_DEFAULT,
+  sceneCheckAt  = 0,            -- next auto daypart check (utc ms)
 }
 
 -- Forward declarations filled in after helpers exist
@@ -257,6 +313,8 @@ local function loadSettings()
       end
     end
   end
+  if type(data.sceneAuto) == "boolean" then state.sceneAuto = data.sceneAuto end
+  if type(data.sceneId) == "string" then state.sceneId = data.sceneId end
 end
 
 local function saveSettings()
@@ -265,6 +323,8 @@ local function saveSettings()
     volume = state.volume,
     playlist = state.playlist,
     categoryFilter = state.categoryFilter,
+    sceneAuto = state.sceneAuto,
+    sceneId = state.sceneId,
   }
   local f = fs.open(SETTINGS_FILE, "w")
   if not f then return end
@@ -342,6 +402,150 @@ local function saveCustomQuotes()
   if not f then return end
   f.write(textutils.serialise(customQuotes))
   f.close()
+end
+
+local function slugify(text)
+  text = tostring(text or ""):lower()
+  text = text:gsub("[^a-z0-9]+", "-"):gsub("^%-", ""):gsub("%-$", "")
+  if text == "" then text = "scene" end
+  return text:sub(1, 24)
+end
+
+local function normalizeScene(s)
+  if type(s) ~= "table" then return nil end
+  local name = type(s.name) == "string" and s.name:gsub("^%s+", ""):gsub("%s+$", "") or ""
+  if name == "" then return nil end
+  local id = type(s.id) == "string" and s.id:gsub("^%s+", ""):gsub("%s+$", "") or ""
+  if id == "" then id = slugify(name) end
+  local playlist = type(s.playlist) == "string" and s.playlist or "all"
+  if not PLAYLIST_LABEL[playlist] then playlist = "all" end
+  local category = type(s.category) == "string" and s.category or "ALL"
+  local catOk = false
+  for _, c in ipairs(CATEGORY_ORDER) do
+    if c == category then catOk = true break end
+  end
+  if not catOk then category = "ALL" end
+  local title = type(s.title) == "string" and s.title or ""
+  local blurb = type(s.blurb) == "string" and s.blurb or ""
+  local fromHour, toHour = s.fromHour, s.toHour
+  if type(fromHour) == "number" then
+    fromHour = math.max(0, math.min(23, math.floor(fromHour)))
+  else
+    fromHour = nil
+  end
+  if type(toHour) == "number" then
+    toHour = math.max(0, math.min(24, math.floor(toHour)))
+  else
+    toHour = nil
+  end
+  if (fromHour and not toHour) or (toHour and not fromHour) then
+    fromHour, toHour = nil, nil
+  end
+  local priority = tonumber(s.priority) or 1
+  local songIdx = tonumber(s.songIdx)
+  if songIdx then
+    songIdx = math.floor(songIdx)
+    if songIdx < 1 or songIdx > #SONGS then songIdx = nil end
+  end
+  return {
+    id = id,
+    name = name:sub(1, 40),
+    title = title:sub(1, 40),
+    playlist = playlist,
+    category = category,
+    blurb = blurb:sub(1, 80),
+    fromHour = fromHour,
+    toHour = toHour,
+    priority = priority,
+    songIdx = songIdx,
+    custom = s.custom == true,
+  }
+end
+
+local function loadCustomScenes()
+  if not fs.exists(SCENES_FILE) then return end
+  local f = fs.open(SCENES_FILE, "r")
+  if not f then return end
+  local raw = f.readAll()
+  f.close()
+  local ok, data = pcall(textutils.unserialise, raw)
+  if not ok or type(data) ~= "table" then return end
+  for i = #customScenes, 1, -1 do
+    customScenes[i] = nil
+  end
+  for _, s in ipairs(data) do
+    local n = normalizeScene(s)
+    if n then
+      n.custom = true
+      customScenes[#customScenes + 1] = n
+    end
+  end
+end
+
+local function saveCustomScenes()
+  local out = {}
+  for _, s in ipairs(customScenes) do
+    local n = normalizeScene(s)
+    if n then
+      n.custom = true
+      out[#out + 1] = n
+    end
+  end
+  local f = fs.open(SCENES_FILE, "w")
+  if not f then return end
+  f.write(textutils.serialise(out))
+  f.close()
+end
+
+local function listAllScenes()
+  local out = {}
+  for _, s in ipairs(BUILTIN_SCENES) do
+    local n = normalizeScene(s)
+    if n then
+      n.custom = false
+      out[#out + 1] = n
+    end
+  end
+  for _, s in ipairs(customScenes) do
+    local n = normalizeScene(s)
+    if n then
+      n.custom = true
+      out[#out + 1] = n
+    end
+  end
+  return out
+end
+
+local function findScene(idOrName)
+  if type(idOrName) ~= "string" or idOrName == "" then return nil end
+  local key = idOrName:lower()
+  for _, s in ipairs(listAllScenes()) do
+    if s.id:lower() == key or s.name:lower() == key then
+      return s
+    end
+  end
+  return nil
+end
+
+local function minecraftHour()
+  local ok, t = pcall(os.time)
+  if ok and type(t) == "number" then
+    return t % 24
+  end
+  return 12
+end
+
+local function sceneMatchesHour(scene, hour)
+  if type(scene.fromHour) ~= "number" or type(scene.toHour) ~= "number" then
+    return false
+  end
+  local a, b = scene.fromHour, scene.toHour
+  if a == b then return true end
+  if a < b then
+    return hour >= a and hour < b
+  end
+  -- overnight wrap (e.g. 21 → 5)
+  return hour >= a or hour < b
 end
 
 local function rebuildAllQuotes()
@@ -519,13 +723,14 @@ local function drawHelp(mon, w, h)
     "- / =  volume",
     "C category filter",
     "L playlist filter",
+    "S atmosphere scene",
     "A apps     X back",
     "H help     Q quit",
     "Touch monitor = next",
     "",
-    "Chat: #apps #app workshop",
-    "      #next #skip #mute",
-    "      #vol 50 #playlist",
+    "Chat: #scene dusk",
+    "      #scene auto|list",
+    "      #apps #app scenes",
     "",
     "Up " .. uptimeString()
       .. "  shown " .. state.quotesShown,
@@ -568,7 +773,8 @@ local function drawScreenOn(mon, quote)
   else
     mon.setTextColour(colours.yellow)
     mon.clearLine()
-    local title = "* " .. BOARD_TITLE .. " *"
+    local boardName = state.sceneTitle or BOARD_TITLE
+    local title = "* " .. boardName .. " *"
     if state.paused then title = "* PAUSED *" end
     if SHOW_CLOCK then
       local clk = clockString()
@@ -699,6 +905,13 @@ local function drawScreenOn(mon, quote)
   end
   if state.playlist ~= "all" then
     bits[#bits + 1] = PLAYLIST_LABEL[state.playlist] or state.playlist
+  end
+  if state.sceneName then
+    local sn = state.sceneName
+    if state.sceneAuto then sn = sn .. "*" end
+    bits[#bits + 1] = sn
+  elseif state.sceneAuto then
+    bits[#bits + 1] = "auto"
   end
   bits[#bits + 1] = volPct .. "%"
   if state.chatCount > 0 then
@@ -868,6 +1081,15 @@ local function togglePause()
   end
 end
 
+local function clearSceneMeta()
+  if state.sceneId or state.sceneTitle or state.sceneName then
+    state.sceneId = nil
+    state.sceneName = nil
+    state.sceneTitle = nil
+    saveSettings()
+  end
+end
+
 local function cycleCategory()
   local idx = 1
   for i, c in ipairs(CATEGORY_ORDER) do
@@ -875,6 +1097,7 @@ local function cycleCategory()
   end
   idx = (idx % #CATEGORY_ORDER) + 1
   state.categoryFilter = CATEGORY_ORDER[idx]
+  clearSceneMeta()
   saveSettings()
   flash("Filter: " .. state.categoryFilter, 2000)
   -- If current quote is wrong category, advance
@@ -918,10 +1141,121 @@ local function cyclePlaylist()
   end
   idx = (idx % #PLAYLIST_ORDER) + 1
   state.playlist = PLAYLIST_ORDER[idx]
+  clearSceneMeta()
   refillSongBag()
   saveSettings()
   flash("Playlist: " .. (PLAYLIST_LABEL[state.playlist] or state.playlist), 2500)
   requestSkipSong()
+end
+
+-- Apply an atmosphere scene (playlist + category + optional title/song).
+-- silent: skip flash (used by auto daypart).
+-- Returns "abort_music" when a song skip was requested.
+local function applyScene(scene, opts)
+  opts = opts or {}
+  if type(scene) ~= "table" then return nil end
+  scene = normalizeScene(scene) or scene
+  local prevPlaylist = state.playlist
+  local musicAbort = false
+
+  state.sceneId = scene.id
+  state.sceneName = scene.name
+  if type(scene.title) == "string" and scene.title ~= "" then
+    state.sceneTitle = scene.title
+  else
+    state.sceneTitle = nil
+  end
+
+  if PLAYLIST_LABEL[scene.playlist] then
+    state.playlist = scene.playlist
+  end
+  local catOk = false
+  for _, c in ipairs(CATEGORY_ORDER) do
+    if c == scene.category then catOk = true break end
+  end
+  state.categoryFilter = catOk and scene.category or "ALL"
+
+  if state.playlist ~= prevPlaylist then
+    refillSongBag()
+    musicAbort = true
+  end
+
+  if type(scene.songIdx) == "number" and SONGS[scene.songIdx] then
+    state.requestSongIdx = scene.songIdx
+    musicAbort = true
+  end
+
+  if musicAbort then
+    requestSkipSong()
+  end
+
+  ensureQuoteMatchesFilter()
+  saveSettings()
+  state.dirty = true
+
+  if not opts.silent then
+    local tag = state.sceneAuto and "AUTO" or "SCENE"
+    flash(tag .. ": " .. scene.name, 2500)
+  end
+  return musicAbort and "abort_music" or "redraw"
+end
+
+local function pickDaypartScene()
+  local hour = minecraftHour()
+  local best, bestPri = nil, -1
+  for _, s in ipairs(listAllScenes()) do
+    if sceneMatchesHour(s, hour) then
+      local pri = tonumber(s.priority) or 1
+      if pri > bestPri then
+        best, bestPri = s, pri
+      end
+    end
+  end
+  return best, hour
+end
+
+local function checkSceneAuto()
+  if not state.sceneAuto then return nil end
+  local now = os.epoch("utc")
+  if now < (state.sceneCheckAt or 0) then return nil end
+  state.sceneCheckAt = now + 15000
+  local scene = pickDaypartScene()
+  if not scene then return nil end
+  if state.sceneId == scene.id then return nil end
+  return applyScene(scene, { silent = false })
+end
+
+local function cycleScene()
+  local scenes = listAllScenes()
+  if #scenes == 0 then
+    flash("No scenes", 1500)
+    return nil
+  end
+  local idx = 0
+  for i, s in ipairs(scenes) do
+    if s.id == state.sceneId then idx = i break end
+  end
+  idx = (idx % #scenes) + 1
+  return applyScene(scenes[idx])
+end
+
+local function toggleSceneAuto()
+  state.sceneAuto = not state.sceneAuto
+  saveSettings()
+  if state.sceneAuto then
+    state.sceneCheckAt = 0
+    flash("Scene auto ON (MC daypart)", 2500)
+    return checkSceneAuto() or "redraw"
+  end
+  flash("Scene auto OFF", 2000)
+  return "redraw"
+end
+
+local function clearScene()
+  clearSceneMeta()
+  flash("Scene cleared", 1500)
+  state.dirty = true
+  return "redraw"
 end
 
 local function adjustVolume(delta)
@@ -1011,7 +1345,10 @@ local function buildAppContext()
     allQuotes = allQuotes,
     chatQuotes = chatQuotes,
     customQuotes = customQuotes,
+    customScenes = customScenes,
     customCategories = CUSTOM_CAT_ORDER,
+    playlistOrder = PLAYLIST_ORDER,
+    categoryOrder = CATEGORY_ORDER,
     state = state,
     boardTitle = BOARD_TITLE,
     wordWrap = wordWrap,
@@ -1027,6 +1364,15 @@ local function buildAppContext()
     openApp = function(id) openApp(id) end,
     saveCustomQuotes = saveAndRebuildCustoms,
     normalizeCustomQuote = normalizeCustomQuote,
+    listScenes = listAllScenes,
+    findScene = findScene,
+    applyScene = applyScene,
+    toggleSceneAuto = toggleSceneAuto,
+    clearScene = clearScene,
+    saveCustomScenes = saveCustomScenes,
+    normalizeScene = normalizeScene,
+    minecraftHour = minecraftHour,
+    slugify = slugify,
   }
 end
 
@@ -1104,6 +1450,28 @@ local function handleChatCommand(user, msg)
     cycleCategory()
   elseif cmd == "playlist" or cmd == "pl" or cmd == "music" then
     cyclePlaylist()
+  elseif cmd == "scene" or cmd == "scenes" or cmd == "atmosphere" then
+    local a = arg:lower()
+    if a == "" then
+      openApp("scenes")
+    elseif a == "auto" or a == "daypart" then
+      toggleSceneAuto()
+    elseif a == "list" then
+      local names = {}
+      for _, s in ipairs(listAllScenes()) do
+        names[#names + 1] = s.id
+      end
+      flash("Scenes: " .. table.concat(names, " "), 4000)
+    elseif a == "clear" or a == "off" or a == "none" then
+      clearScene()
+    else
+      local scene = findScene(arg)
+      if scene then
+        applyScene(scene)
+      else
+        flash("Unknown scene (try #scene list)", 2500)
+      end
+    end
   elseif cmd == "help" or cmd == "h" then
     showHelp()
   elseif cmd == "stats" then
@@ -1126,7 +1494,7 @@ local function handleChatCommand(user, msg)
         end
       end
       if not ok then
-        flash("Apps: jukebox library workshop chatlog clock stats dice about", 3500)
+        flash("Apps: jukebox library workshop scenes chatlog clock stats dice about", 3500)
       end
     end
   elseif cmd == "home" or cmd == "board" then
@@ -1246,6 +1614,9 @@ local function handleGlobalEvent(ev)
     elseif key == keys.l then
       cyclePlaylist()
       return "abort_music"
+    elseif key == keys.s then
+      local result = cycleScene()
+      return result or "redraw"
     elseif key == keys.h then
       showHelp()
       return "redraw"
@@ -1353,6 +1724,13 @@ local function uiLoop()
   state.startedAt = os.epoch("utc")
 
   while state.running do
+    -- Atmosphere daypart auto-switch (Minecraft os.time hours).
+    local sceneResult = checkSceneAuto()
+    if sceneResult == "abort_music" then
+      state.skipSong = true
+      stopSpeakers()
+    end
+
     -- Quote rotation pauses while a mini-app is open.
     if (not state.app) and (not state.paused) and os.epoch("utc") >= state.nextQuoteAt then
       advanceQuote()
@@ -1670,14 +2048,28 @@ end
 local function main()
   loadChatQuotes()
   loadCustomQuotes()
+  loadCustomScenes()
   loadSettings()
   rebuildAllQuotes()
   assert(#allQuotes > 0, "No quotes available.")
   assert(#SONGS > 0, "No songs available.")
   math.randomseed(os.epoch("utc"))
   state.quoteIdx = math.random(#allQuotes)
+  -- Restore scene branding from saved id (playlist/category already loaded).
+  if state.sceneId then
+    local saved = findScene(state.sceneId)
+    if saved then
+      state.sceneName = saved.name
+      if type(saved.title) == "string" and saved.title ~= "" then
+        state.sceneTitle = saved.title
+      end
+    else
+      state.sceneId, state.sceneName, state.sceneTitle = nil, nil, nil
+    end
+  end
   ensureQuoteMatchesFilter()
   state.startedAt = os.epoch("utc")
+  state.sceneCheckAt = 0
 
   local attached = peripheral.getNames()
   print("quote-board: peripherals (" .. #attached .. ")")
@@ -1715,11 +2107,13 @@ local function main()
   print("Songs: " .. #SONGS .. "  |  Quotes: " .. #allQuotes
     .. "  |  Vol: " .. math.floor(state.volume * 100) .. "%")
   print("Keys: R/P quote  Space pause  N skip  M mute  -/= vol")
-  print("      C category  L playlist  A apps  X back  H help  Q quit")
-  print("Chat: " .. CHAT_CMD_PREFIX .. "apps  "
-    .. CHAT_CMD_PREFIX .. "app jukebox  "
-    .. CHAT_CMD_PREFIX .. "next  "
+  print("      C category  L playlist  S scene  A apps  X back  H help  Q quit")
+  print("Chat: " .. CHAT_CMD_PREFIX .. "scene dusk  "
+    .. CHAT_CMD_PREFIX .. "scene auto  "
+    .. CHAT_CMD_PREFIX .. "apps  "
     .. CHAT_CMD_PREFIX .. "help")
+  print("Scenes: " .. #listAllScenes() .. "  |  auto daypart: "
+    .. (state.sceneAuto and "ON" or "OFF"))
 
   drawSplash()
   os.sleep((#speakers == 0 or not box) and 3 or 1.5)

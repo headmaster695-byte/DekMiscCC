@@ -44,6 +44,7 @@ wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts
 | `-` / `=` | Volume down / up |
 | `C` | Cycle category filter |
 | `L` | Cycle music playlist |
+| `S` | Cycle atmosphere scene |
 | `A` | Open / close apps |
 | `X` | Back to launcher / board |
 | `H` | Help overlay + session stats |
@@ -64,6 +65,7 @@ Prefix `#` (configurable). Anyone can use these when a Chat Box is present:
 | `#vol 50` | Set volume 0–100 |
 | `#cat` | Cycle category filter |
 | `#playlist` | Cycle playlist |
+| `#scene dusk` | Activate an atmosphere (also `auto` / `list` / `clear`) |
 | `#help` | Help overlay |
 | `#stats` | Flash uptime / counts |
 | `#apps` | Open app launcher |
@@ -81,6 +83,7 @@ Press `A` (or `#apps`) for the launcher. Quote rotation pauses while an app is o
 | **Jukebox** | Browse all tracks, Enter/tap to queue one now |
 | **Quote Library** | Flip through the pool; Enter pins one to the board |
 | **Quote Workshop** | Create, rewrite, and enable custom quotes (all start **off**) |
+| **Atmospheres** | Scene presets: playlist + quote filter + title (optional daypart auto) |
 | **Chat Log** | Newest player quotes; Enter pins to the board |
 | **Clock** | Large live clock + uptime |
 | **Stats** | Session counts, categories, playlist sizes |
@@ -101,6 +104,22 @@ Custom quotes live in `quote-board-custom.dat` and **do not appear in the rotati
 | In editor | Type text/source; Tab fields; on Category use ←/→ and `T` for on/off; Enter save; X cancel |
 
 `X` returns to the launcher (or the board from the launcher). `A` always jumps back to the board.
+
+### Atmospheres (scenes)
+
+Bundles that set **playlist**, **quote category**, and an optional **board title**. Seven builtins ship ready; customs save to `quote-board-scenes.dat`.
+
+| Builtin | Hours (MC `os.time`) | Playlist | Quotes |
+|---------|----------------------|----------|--------|
+| Morning Briefing | 05–11 | Elevator | TIP |
+| Open World | 11–17 | Zelda | ALL |
+| Ember Hours | 17–21 | RuneScape | WISDOM |
+| Underground | 21–05 | Undertale | QUOTE |
+| Deep Work / Raid Night / Quiet Hours | manual | various | various |
+
+- `S` or `#scene <id>` activates; `#scene auto` toggles Minecraft daypart switching (default **off**)
+- Manual `L` / `C` clears the active scene tag (keeps the playlist/filter you picked)
+- Atmospheres app: Enter activate · `T` auto · `N` new · `B` clone · `R` edit custom · `D` delete
 
 ## Features
 
@@ -128,9 +147,14 @@ Custom quotes live in `quote-board-custom.dat` and **do not appear in the rotati
 - **True polyphony:** simultaneous chord notes are fired in one tick (CC allows 8 `playNote`s/speaker/tick); with enough speakers, each voice gets a dedicated speaker (`3v | 4spk` in the footer)
 - Interruptible playback (skip/mute/chat never get swallowed)
 
+### Atmospheres
+- Preset “radio station” modes tying music + quotes + header title together
+- Optional auto daypart from Minecraft world time (`os.time`)
+- Custom scenes with hour windows, editable in the Atmospheres app
+
 ### Display
 - Boot splash
-- Clock in the header
+- Clock in the header (title swaps when a scene is active)
 - Mirrored across all attached colour monitors
 - Help overlay with session stats (uptime, quotes shown, chat captured)
 
@@ -161,7 +185,8 @@ Top of `quote-board.lua`:
 |------|----------|
 | `quote-board-chat.dat` | Captured player quotes |
 | `quote-board-custom.dat` | Workshop customs (`text`, source, category, enabled) |
-| `quote-board-settings.dat` | Volume, mute, playlist, category filter |
+| `quote-board-scenes.dat` | Custom atmosphere scenes |
+| `quote-board-settings.dat` | Volume, mute, playlist, category filter, scene auto/id |
 
 ## Layout
 
