@@ -5,284 +5,305 @@ local BUILTIN_QUOTES = {
 
   -- TIP ──────────────────────────────────────────────────────
   {
-    "Mining with a wooden pickaxe is technically possible. However, so is walking to work. Neither is recommended.",
+    "Never dig straight down. Everyone knows this. Everyone does it anyway.",
     "The Game", "TIP"
   },
   {
-    "Coal can be used to fuel a furnace, power a campfire, or sit in a chest doing absolutely nothing. We support all three lifestyles.",
+    "A wooden pickaxe can mine stone. It will also make you question several life choices.",
     "The Game", "TIP"
   },
   {
-    "If you find yourself surrounded by hostile mobs, consider the time-honoured strategy of hoping someone else deals with it.",
+    "Keep a water bucket on your hotbar. One day you will understand why, and you will not enjoy that day.",
     "The Game", "TIP"
   },
   {
-    "Beds can be used to skip the night entirely. Time management experts consider this cheating.",
+    "Creepers hiss before they explode. This is considered fair warning.",
     "The Game", "TIP"
   },
   {
-    "The shield blocks 100% of frontal attacks and 0% of attacks you did not see coming. Results may vary.",
+    "If your house has no door, you do not have a house. You have a waiting room for zombies.",
     "The Game", "TIP"
   },
   {
-    "Torches can be placed on most surfaces, except in the places where you actually need them.",
+    "Torches prevent mobs from spawning. They do not prevent you from forgetting where you put them.",
     "The Game", "TIP"
   },
   {
-    "Turtles can automate most tasks, including the task of figuring out why your turtle is not working.",
+    "Lava and water make cobblestone. Lava and you make a new world seed.",
     "The Game", "TIP"
   },
   {
-    "Building a house before nightfall is recommended. Building a house before your seventh death is optional but encouraged.",
+    "Always carry food. Starving to death next to a chest full of steak is a recognised tradition.",
     "The Game", "TIP"
   },
   {
-    "Gravel has a 10% chance to drop flint. The other 90% of the time it is the universe teaching you patience.",
+    "Skeletons can shoot you from further away than you think. They know this. You will learn.",
     "The Game", "TIP"
   },
   {
-    "If you dig straight down, you will fall into lava. This is not a bug. This is character development.",
+    "Beds set your spawn point. They do not set it somewhere sensible.",
     "The Game", "TIP"
   },
   {
-    "Respawning is free, unlimited, and comes with complimentary existential dread.",
+    "Falling into a ravine is not a mining strategy. It is, however, a very fast one.",
     "The Game", "TIP"
   },
   {
-    "Dirt is the most common block in the game. This fact will not help you.",
+    "Name tags stop mobs from despawning. They do not stop you from naming a creeper 'friend'.",
+    "The Game", "TIP"
+  },
+  {
+    "Boats are faster than walking. Boats are also somehow worse at going where you intended.",
+    "The Game", "TIP"
+  },
+  {
+    "Mark your mineshaft entrance. Future you is an idiot and will thank you.",
     "The Game", "TIP"
   },
 
   -- DID YOU KNOW ─────────────────────────────────────────────
   {
-    "Creepers were originally designed to be pigs. The pigs were not informed of this change.",
-    "Probably True", "DID YOU KNOW"
+    "Creepers were meant to be pigs. Notch got the height and width swapped. Nobody fixed the attitude.",
+    "Dev lore", "DID YOU KNOW"
   },
   {
-    "The word 'Minecraft' contains the word 'mine'. The legal team has confirmed this was intentional.",
-    "Legal Department", "DID YOU KNOW"
+    "Endermen pick up blocks. They put them back somewhere worse.",
+    "Field notes", "DID YOU KNOW"
   },
   {
-    "Diamonds were originally called 'shiny rocks'. Marketing insisted on the rebrand.",
-    "Internal Memo, 2011", "DID YOU KNOW"
+    "Herobrine has been removed from the game more times than he was ever in it.",
+    "Changelogs", "DID YOU KNOW"
   },
   {
-    "The Nether was added after a developer left the oven on. It was decided to keep it.",
-    "Patch Notes (Unverified)", "DID YOU KNOW"
+    "Phantoms spawn if you refuse to sleep. The game would like a word about your work-life balance.",
+    "Update 1.13", "DID YOU KNOW"
   },
   {
-    "Endermen have never attacked first. All prior incidents are under internal review.",
-    "Enderman PR Department", "DID YOU KNOW"
+    "The Nether roof is solid bedrock. Players treat this as a suggestion.",
+    "Server logs", "DID YOU KNOW"
   },
   {
-    "Herobrine has never existed in Minecraft. He has, however, been removed from the changelog forty-seven times.",
-    "Changelogs, Various", "DID YOU KNOW"
+    "Cats scare creepers. Creepers scare you. The cats know what they are doing.",
+    "Natural history", "DID YOU KNOW"
   },
   {
-    "Lava flows faster in the Nether. The lava is aware that you are wearing your best armour. The lava does not care.",
-    "Nether Safety Commission", "DID YOU KNOW"
+    "Villagers will trade you enchanted books. They will not explain why a librarian needs twenty rotten flesh.",
+    "Economics", "DID YOU KNOW"
   },
   {
-    "Skeletons are composed entirely of calcium. They are also composed entirely of the desire to ruin your evening.",
-    "Skeleton Union, Local 7", "DID YOU KNOW"
+    "Silverfish hide in stone. You will discover this by punching the wrong block at the worst time.",
+    "Stronghold brochure", "DID YOU KNOW"
   },
   {
-    "The Ender Dragon has a name. Nobody in the game mentions it because it would undermine the atmosphere.",
-    "Behind the Scenes, Vol. 3", "DID YOU KNOW"
+    "The Ender Dragon destroys end stone. She also destroys your sense of direction.",
+    "End tourism board", "DID YOU KNOW"
   },
   {
-    "Phantoms were added because players were sleeping too much. The developers considered therapy. They went with phantoms.",
-    "Design Document, 2018", "DID YOU KNOW"
+    "Axolotls will fight drowned for you. They will also vanish the moment you look away from them.",
+    "Pet ownership", "DID YOU KNOW"
+  },
+  {
+    "Piglins hate when you open chests near them. They are fine with you dying near them.",
+    "Nether etiquette", "DID YOU KNOW"
+  },
+  {
+    "A compass points to your world spawn. It does not point to where you left your diamonds.",
+    "Navigation", "DID YOU KNOW"
   },
 
   -- WISDOM ───────────────────────────────────────────────────
   {
-    "Every great adventure begins with a single step. Unless that step is into a ravine. Then it ends there too.",
-    "Ancient Proverb (Abridged)", "WISDOM"
+    "Measure twice, mine once. Or don't. The ravine was always there.",
+    "Anonymous miner", "WISDOM"
   },
   {
-    "The early miner gets the iron. The late miner gets the iron the early miner somehow missed.",
-    "Miners' Almanac", "WISDOM"
+    "Fortune favours the bold. Also anyone holding a Fortune III pickaxe.",
+    "Enchanting table graffiti", "WISDOM"
   },
   {
-    "Success is 10% inspiration and 90% not dying to the Skeleton that spawned directly behind you.",
-    "Self-Help Book, Chapter 1", "WISDOM"
+    "It is better to have a shield and not need it than to explain to your friends why you are naked again.",
+    "Arena advice", "WISDOM"
   },
   {
-    "You miss 100% of the shots you do not take. You also miss approximately 43% of the ones you do. Aim for the body.",
-    "Archery Instructor", "WISDOM"
+    "The real treasure was the friends we made along the way. The diamonds help though.",
+    "Chest plaque", "WISDOM"
   },
   {
-    "A problem is just an opportunity you have not solved yet. Most problems remain problems.",
-    "Motivational Poster", "WISDOM"
+    "Leave the caves before dark. Or don't. The caves do not care about your schedule.",
+    "Surface dweller proverb", "WISDOM"
   },
   {
-    "Believe in yourself. Unless you are about to dig straight down. Then believe in your backup saves.",
-    "Therapy Session Notes", "WISDOM"
+    "Build above ground if you want to live. Dig below ground if you want iron. Do both if you want problems.",
+    "Settlement guide", "WISDOM"
   },
   {
-    "Hard work and dedication will get you far. A pickaxe enchanted with Fortune III will get you further.",
-    "Career Counsellor", "WISDOM"
+    "A redstone engineer says it will take five minutes. Bring a packed lunch.",
+    "Project management", "WISDOM"
   },
   {
-    "When life gives you gravel, smelt it into glass and build a structure nobody asked for.",
-    "Survival Handbook, p. 47", "WISDOM"
+    "Never trust a map drawn by someone who died making it.",
+    "Cartographers' union", "WISDOM"
   },
   {
-    "The obstacle is the path. Unless the obstacle is lava. Then the path is around the lava.",
-    "Zen and the Art of Spelunking", "WISDOM"
+    "You can beat the Ender Dragon. You cannot beat the storage system you built at hour two.",
+    "Late-game confession", "WISDOM"
+  },
+  {
+    "Share your base coordinates with people you trust. Hide a second stash anyway.",
+    "Multiplayer survival", "WISDOM"
   },
 
   -- LOADING ──────────────────────────────────────────────────
   {
-    "Loading... Please contemplate the decisions that brought you to this screen.",
-    "The Loading Screen", "LOADING"
+    "Generating terrain... burying your house under a floating island...",
+    "Worldgen", "LOADING"
   },
   {
-    "The world is being generated. This takes time because quality takes time. Also because it is very large.",
-    "The Loading Screen", "LOADING"
+    "Loading chunks. Looking busy.",
+    "Server", "LOADING"
   },
   {
-    "Your progress has been saved. Your decisions, however, are permanent.",
-    "Autosave Complete", "LOADING"
+    "Connecting to server... blaming your internet...",
+    "Client", "LOADING"
   },
   {
-    "The server is thinking. Please do not disturb the server while it thinks.",
-    "Server Administration", "LOADING"
+    "Building terrain. Please wait. Or don't. We can't see you either way.",
+    "Worldgen", "LOADING"
   },
   {
-    "If this is taking too long, it is not a bug. It is an opportunity for self-reflection.",
-    "Support FAQ", "LOADING"
+    "Saving world... pretending this always works...",
+    "Autosave", "LOADING"
+  },
+  {
+    "Still loading. Your sheep are fine. Probably.",
+    "Server", "LOADING"
+  },
+  {
+    "Preparing spawn area. Creepers have already moved in.",
+    "Worldgen", "LOADING"
   },
 
-  -- QUOTE (real-life: misquotations, slight rewrites, absurd context) ───────
+  -- QUOTE ────────────────────────────────────────────────────
+  -- Famous lines, slightly off, or attributed with a straight face
   {
     "Elementary, my dear Watson.",
-    "Sherlock Holmes — never written by Doyle", "QUOTE"
+    "Sherlock Holmes (he never said this)", "QUOTE"
   },
   {
     "Play it again, Sam.",
-    "Casablanca — nobody in the film says this", "QUOTE"
+    "Casablanca (wrong film, wrong line)", "QUOTE"
   },
   {
     "Houston, we have a problem.",
-    "Apollo 13 — they said 'we've had a problem'", "QUOTE"
+    "Apollo 13 (close enough for Hollywood)", "QUOTE"
   },
   {
     "Let them eat cake.",
-    "Marie Antoinette — predates her by about thirty years", "QUOTE"
-  },
-  {
-    "I cannot tell a lie.",
-    "George Washington — invented by his biographer after his death", "QUOTE"
-  },
-  {
-    "The definition of insanity is doing the same thing over and over and expecting different results.",
-    "Einstein — he never said this. Neither did Franklin or Twain.", "QUOTE"
+    "Marie Antoinette (said by someone else, decades earlier)", "QUOTE"
   },
   {
     "Luke, I am your father.",
-    "Darth Vader — the actual line is 'No, I am your father'", "QUOTE"
+    "Darth Vader (still wrong after forty years)", "QUOTE"
+  },
+  {
+    "The definition of insanity is doing the same thing over and over and expecting different results.",
+    "Albert Einstein (never said it; still printed on mugs)", "QUOTE"
+  },
+  {
+    "I cannot tell a lie.",
+    "George Washington (his biographer told that one)", "QUOTE"
   },
   {
     "If you build it, they will come.",
-    "Field of Dreams — the line is 'he will come'", "QUOTE"
+    "Field of Dreams (he said 'he', not 'they')", "QUOTE"
+  },
+  {
+    "Mirror, mirror on the wall...",
+    "Evil Queen (it's 'Magic mirror', but nobody cares)", "QUOTE"
+  },
+  {
+    "Money is the root of all evil.",
+    "Popular Bible paraphrase (missed the 'love of' part)", "QUOTE"
   },
   {
     "Blood is thicker than water.",
-    "The full proverb means the opposite. You are welcome.", "QUOTE"
-  },
-  {
-    "Mirror, mirror on the wall, who is the fairest of them all?",
-    "Snow White — it is 'Magic mirror on the wall'", "QUOTE"
-  },
-  {
-    "I think, therefore I am.",
-    "Rene Descartes — after doubting the existence of everything, including himself", "QUOTE"
-  },
-  {
-    "To be, or not to be, that is the question.",
-    "Shakespeare, Hamlet — Hamlet never receives an answer", "QUOTE"
-  },
-  {
-    "The only thing we have to fear is fear itself.",
-    "Franklin D. Roosevelt — he also had quite a lot to say about the economy", "QUOTE"
-  },
-  {
-    "Float like a butterfly, sting like a bee.",
-    "Muhammad Ali — also sound tactical advice for most conflicts", "QUOTE"
-  },
-  {
-    "Be yourself; everyone else is already taken.",
-    "Oscar Wilde, allegedly — he probably did not say this", "QUOTE"
+    "Proverb (the longer version argues the opposite)", "QUOTE"
   },
   {
     "The reports of my death are greatly exaggerated.",
-    "Mark Twain — he wrote 'the report... was an exaggeration'", "QUOTE"
+    "Mark Twain (paraphrased himself into a better line)", "QUOTE"
   },
   {
-    "That's one small step for man, one giant leap for mankind.",
-    "Neil Armstrong — he meant 'for a man'; the 'a' was inaudible", "QUOTE"
+    "Be yourself; everyone else is already taken.",
+    "Oscar Wilde (probably not; still sounds like him)", "QUOTE"
   },
   {
-    "The pen is mightier than the sword.",
-    "Bulwer-Lytton — who also wrote the worst opening sentence in literature", "QUOTE"
+    "That's one small step for man...",
+    "Neil Armstrong (the 'a' fell into the static)", "QUOTE"
   },
   {
     "Not all those who wander are lost.",
-    "J.R.R. Tolkien — some of them are definitely lost", "QUOTE"
-  },
-  {
-    "It was a dark and stormy night; the rain fell in torrents.",
-    "Edward Bulwer-Lytton — widely considered the worst opening sentence ever published", "QUOTE"
-  },
-  {
-    "In this world nothing can be said to be certain, except death and taxes.",
-    "Benjamin Franklin — he found this so depressing he wrote it in a letter", "QUOTE"
-  },
-  {
-    "Well-behaved women seldom make history.",
-    "Laurel Thatcher Ulrich — originally a footnote in an academic paper", "QUOTE"
-  },
-  {
-    "I am not afraid of an army of lions led by a sheep; I am afraid of an army of sheep led by a lion.",
-    "Attributed to Alexander the Great — almost certainly not him", "QUOTE"
-  },
-  {
-    "It is a truth universally acknowledged that a single man in possession of a good fortune must be in want of a wife.",
-    "Jane Austen, Pride and Prejudice — she was being sarcastic", "QUOTE"
-  },
-  {
-    "All animals are equal, but some animals are more equal than others.",
-    "George Orwell, Animal Farm — intended as satire; adopted as policy", "QUOTE"
-  },
-  {
-    "Power tends to corrupt, and absolute power corrupts absolutely.",
-    "Lord Acton, 1887 — a historian, not speaking hypothetically", "QUOTE"
-  },
-  {
-    "Ask not what your country can do for you; ask what you can do for your country.",
-    "John F. Kennedy — the answer to the second question was not relaxing", "QUOTE"
-  },
-  {
-    "In the beginning God created the heavens and the earth.",
-    "Genesis 1:1 — subsequent events are disputed", "QUOTE"
-  },
-  {
-    "The only way to do great work is to love what you do.",
-    "Steve Jobs — he also had an extensive legal and marketing team", "QUOTE"
+    "Tolkien (some of them are though)", "QUOTE"
   },
   {
     "History is written by the victors.",
-    "Widely misattributed to Churchill — it was not him", "QUOTE"
+    "Winston Churchill (nope) / Napoleon (also nope)", "QUOTE"
   },
   {
-    "We have nothing to fear but fear itself. And spiders. But mainly fear.",
-    "Franklin D. Roosevelt (amended by popular consensus)", "QUOTE"
+    "I have not yet begun to fight.",
+    "John Paul Jones (said while his ship was on fire)", "QUOTE"
   },
   {
-    "I have a dream.",
-    "Martin Luther King Jr. — the full speech had considerably more detail", "QUOTE"
+    "We few, we happy few, we band of brothers.",
+    "Henry V (via Shakespeare; morale improved immediately)", "QUOTE"
+  },
+  {
+    "The pen is mightier than the sword.",
+    "Bulwer-Lytton (same man who opened with a dark and stormy night)", "QUOTE"
+  },
+  {
+    "I think, therefore I am.",
+    "Descartes (after deciding everything else was suspicious)", "QUOTE"
+  },
+  {
+    "To fail to prepare is to prepare to fail.",
+    "Attributed to everyone who has ever run a meeting", "QUOTE"
+  },
+  {
+    "There is no such thing as bad weather, only bad clothing.",
+    "Norwegian proverb (written somewhere warm)", "QUOTE"
+  },
+  {
+    "An army marches on its stomach.",
+    "Napoleon (or Frederick the Great; historians still arguing)", "QUOTE"
+  },
+  {
+    "Speak softly and carry a big stick.",
+    "Theodore Roosevelt (he meant it literally enough)", "QUOTE"
+  },
+  {
+    "The only thing we have to fear is fear itself.",
+    "FDR (spiders were implied)", "QUOTE"
+  },
+  {
+    "All that glitters is not gold.",
+    "Shakespeare (also applies to pyrite and bad trades)", "QUOTE"
+  },
+  {
+    "Rome wasn't built in a day.",
+    "Medieval proverb (used mostly by people missing deadlines)", "QUOTE"
+  },
+  {
+    "Don't count your chickens before they hatch.",
+    "Aesop-ish advice (ignored by every farmer with a plan)", "QUOTE"
+  },
+  {
+    "A journey of a thousand miles begins with a single step.",
+    "Laozi (the other 999 miles are mostly gravel)", "QUOTE"
+  },
+  {
+    "Keep your friends close and your enemies closer.",
+    "Sun Tzu / The Godfather (pick your favourite)", "QUOTE"
   },
 }
 
