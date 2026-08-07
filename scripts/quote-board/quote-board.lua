@@ -80,11 +80,12 @@ local CATEGORY_ORDER = {
   "ALL", "TIP", "DID YOU KNOW", "WISDOM", "LOADING", "QUOTE", "PLAYER",
 }
 
-local PLAYLIST_ORDER = { "all", "elevator", "zelda", "original", "title" }
+local PLAYLIST_ORDER = { "all", "elevator", "zelda", "runescape", "original", "title" }
 local PLAYLIST_LABEL = {
   all       = "All tracks",
   elevator  = "Elevator",
   zelda     = "Zelda-inspired",
+  runescape = "RuneScape-inspired",
   original  = "Originals",
   title     = "Title only",
 }
