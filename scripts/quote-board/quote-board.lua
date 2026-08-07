@@ -91,12 +91,21 @@ local PLAYLIST_LABEL = {
 
 local function songPlaylist(idx, song)
   if idx == TITLE_SONG_IDX then return "title" end
+  if type(song.playlist) == "string" and PLAYLIST_LABEL[song.playlist] then
+    return song.playlist
+  end
   local n = (song.name or ""):lower()
-  if n:find("temple", 1, true) or n:find("kokiri", 1, true) or n:find("moonlight", 1, true) then
+  if n:find("temple", 1, true) or n:find("kokiri", 1, true) or n:find("moonlight", 1, true)
+    or n:find("ember", 1, true) or n:find("dock", 1, true) or n:find("clockwork", 1, true)
+    or n:find("deepstone", 1, true) or n:find("frost", 1, true) or n:find("hollow", 1, true)
+    or n:find("library", 1, true) or n:find("harbor", 1, true) or n:find("garden", 1, true) then
     return "original"
   end
   if n:find("forest", 1, true) or n:find("zora", 1, true) or n:find("gerudo", 1, true)
-    or n:find("lon lon", 1, true) or n:find("tempest", 1, true) or n:find("great sea", 1, true) then
+    or n:find("lon lon", 1, true) or n:find("tempest", 1, true) or n:find("great sea", 1, true)
+    or n:find("highland", 1, true) or n:find("meadow", 1, true) or n:find("lantern", 1, true)
+    or n:find("bazaar", 1, true) or n:find("archipelago", 1, true) or n:find("river market", 1, true)
+    or n:find("sheikah", 1, true) or n:find("fairy", 1, true) then
     return "zelda"
   end
   return "elevator"
@@ -136,7 +145,6 @@ local state = {
   quotesShown   = 0,
   chatCaptured  = 0,
   startedAt     = 0,
-  lastTickIdx   = nil,
 }
 
 local CHAT_EVENT_NAMES = { chat = true, chat_message = true }
