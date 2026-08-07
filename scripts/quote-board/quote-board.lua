@@ -1397,22 +1397,25 @@ local function playSong(song, spkList)
     return bestIdx, bestCount
   end
 
-  local t0 = os.clock()
+  -- Sleep the gap between successive chords — NOT wall-clock catch-up.
+  -- CC timers are tick-quantised (~0.05s); absolute catch-up falls permanently
+  -- behind on dense songs (A New Start) and then dumps the rest with no delays.
+  local prevT = 0
   for _, group in ipairs(groups) do
     if shouldAbortPlayback() then
       state.polyVoices = 0
       return
     end
 
-    -- Stay locked to song-time (catch up if a prior retry ran long).
-    local wait = (t0 + group.t) - os.clock()
-    if wait > 0 then
-      coopSleep(wait)
+    local gap = group.t - prevT
+    if gap > 0 then
+      coopSleep(gap)
       if shouldAbortPlayback() then
         state.polyVoices = 0
         return
       end
     end
+    prevT = group.t
 
     -- Fire the whole chord without yielding so notes share one tick budget.
     local load = {}
