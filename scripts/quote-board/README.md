@@ -111,7 +111,8 @@ Press `A` (or `#apps`) for the launcher. Quote rotation pauses while an app is o
 - Shuffle bag (no repeats until the bag empties)
 - Playlists (`L` / `#playlist`): All / Elevator / Zelda-inspired / RuneScape-inspired / Originals / Title only
 - Volume control + mute; settings persist in `quote-board-settings.dat`
-- Interruptible timeline playback (skip/mute/chat never get swallowed)
+- **True polyphony:** simultaneous chord notes are fired in one tick (CC allows 8 `playNote`s/speaker/tick); with enough speakers, each voice gets a dedicated speaker (`3v | 4spk` in the footer)
+- Interruptible playback (skip/mute/chat never get swallowed)
 
 ### Display
 - Boot splash

@@ -5,7 +5,7 @@
 --              multi-speaker music and automatic chat capture.
 --
 -- Usage: quote-board
--- Requires (same directory): songs.lua, quotes.lua
+-- Requires (same directory): songs.lua, quotes.lua, apps.lua
 --
 -- Controls:
 --   R next quote     P previous      Space pause/resume quotes
@@ -156,6 +156,8 @@ local state = {
   startedAt     = 0,
   app           = nil,          -- active mini-app instance
   appId         = nil,
+  polyVoices    = 0,            -- voices in the current song
+  polySpeakers  = 0,            -- speakers used for current song
 }
 
 -- Forward declarations filled in after helpers exist
@@ -219,7 +221,8 @@ local function stopAllSpeakers()
 end
 
 local function playTick()
-  if not QUOTE_TICK_SOUND or #speakers == 0 or not state.musicOn then return end
+  -- Never steal note-budget from active polyphony (8 notes/tick/speaker).
+  if not QUOTE_TICK_SOUND or #speakers == 0 or state.musicOn then return end
   local spk = speakers[1]
   local vol = math.max(0.05, 0.2 * state.volume)
   pcall(spk.playNote, "hat", vol, 18)
@@ -641,6 +644,9 @@ local function drawScreenOn(mon, quote)
     bits[#bits + 1] = state.songName
   else
     bits[#bits + 1] = "MUTED"
+  end
+  if state.musicOn and state.polyVoices > 0 then
+    bits[#bits + 1] = state.polyVoices .. "v"
   end
   if state.speakerCount > 1 then
     bits[#bits + 1] = state.speakerCount .. "spk"
@@ -1324,55 +1330,139 @@ local function pickSongIndex(lastIdx)
   return table.remove(songBag, 1)
 end
 
+-- CC:T allows up to 8 playNote calls per speaker per tick. Complex songs fire
+-- whole chords in one batch (no mid-chord yields) so voices stay aligned.
+local NOTES_PER_TICK = 8
+local NOTE_TICK = 0.05
+local TIME_EPS = 0.0005
+
 local function playSong(song, spkList)
   local voices = getSongVoices(song)
   if #voices == 0 or #spkList == 0 then return end
 
-  local timeline = {}
+  state.polyVoices = #voices
+  state.polySpeakers = #spkList
+  state.dirty = true
+
+  -- Flatten to absolute song-time, then group into simultaneous chords.
+  local flat = {}
   for vi, voice in ipairs(voices) do
     local t = 0
     for _, note in ipairs(voice.notes or {}) do
-      timeline[#timeline + 1] = {
+      flat[#flat + 1] = {
         t = t,
         vi = vi,
         inst = note[1],
         vol = note[2],
         pitch = note[3],
       }
-      t = t + (note[4] or 0.05)
+      t = t + (tonumber(note[4]) or 0.05)
     end
   end
+  if #flat == 0 then return end
 
-  if #timeline == 0 then return end
-  table.sort(timeline, function(a, b)
+  table.sort(flat, function(a, b)
     if a.t == b.t then return a.vi < b.vi end
     return a.t < b.t
   end)
 
-  local t0 = os.clock()
-  for _, ev in ipairs(timeline) do
-    if shouldAbortPlayback() then return end
+  local groups = {}
+  for _, note in ipairs(flat) do
+    local g = groups[#groups]
+    if (not g) or math.abs(note.t - g.t) > TIME_EPS then
+      g = { t = note.t, notes = {} }
+      groups[#groups + 1] = g
+    end
+    g.notes[#g.notes + 1] = note
+  end
 
-    local target = t0 + ev.t
-    local wait = target - os.clock()
-    if wait > 0 then
-      coopSleep(wait)
-      if shouldAbortPlayback() then return end
+  -- Prefer a dedicated speaker per voice when hardware allows — that is the
+  -- intended multi-speaker polyphony layout (V1→spk1, V2→spk2, …).
+  local function speakerFor(vi)
+    if #spkList >= #voices then
+      return spkList[vi], vi
+    end
+    local idx = ((vi - 1) % #spkList) + 1
+    return spkList[idx], idx
+  end
+
+  local function leastLoaded(load)
+    local bestIdx, bestCount = 1, load[1] or 0
+    for i = 2, #spkList do
+      local c = load[i] or 0
+      if c < bestCount then
+        bestIdx, bestCount = i, c
+      end
+    end
+    return bestIdx, bestCount
+  end
+
+  local t0 = os.clock()
+  for _, group in ipairs(groups) do
+    if shouldAbortPlayback() then
+      state.polyVoices = 0
+      return
     end
 
-    if type(ev.inst) == "string" then
-      local spk = spkList[(ev.vi - 1) % #spkList + 1]
-      local vol = (ev.vol or 1) * state.volume
-      if vol > 0 then
-        local ok = spk.playNote(ev.inst, vol, ev.pitch)
-        if not ok then
-          coopSleep(0.05)
-          if shouldAbortPlayback() then return end
-          spk.playNote(ev.inst, vol, ev.pitch)
+    -- Stay locked to song-time (catch up if a prior retry ran long).
+    local wait = (t0 + group.t) - os.clock()
+    if wait > 0 then
+      coopSleep(wait)
+      if shouldAbortPlayback() then
+        state.polyVoices = 0
+        return
+      end
+    end
+
+    -- Fire the whole chord without yielding so notes share one tick budget.
+    local load = {}
+    local failed = {}
+    for _, note in ipairs(group.notes) do
+      if type(note.inst) == "string" then
+        local vol = (tonumber(note.vol) or 1) * state.volume
+        if vol < 0 then vol = 0 end
+        if vol > 3 then vol = 3 end
+        if vol > 0 then
+          local spk, spkIdx = speakerFor(note.vi)
+          local used = load[spkIdx] or 0
+          if used >= NOTES_PER_TICK then
+            local altIdx, altUsed = leastLoaded(load)
+            if altUsed < NOTES_PER_TICK then
+              spk, spkIdx, used = spkList[altIdx], altIdx, altUsed
+            else
+              failed[#failed + 1] = { note = note, spk = spk, vol = vol }
+              spk = nil
+            end
+          end
+          if spk then
+            local ok = spk.playNote(note.inst, vol, note.pitch)
+            if ok then
+              load[spkIdx] = used + 1
+            else
+              failed[#failed + 1] = { note = note, spk = spk, vol = vol }
+            end
+          end
         end
       end
     end
+
+    -- Single one-tick retry for overflows (keeps chord timing mostly intact).
+    if #failed > 0 then
+      coopSleep(NOTE_TICK)
+      if shouldAbortPlayback() then
+        state.polyVoices = 0
+        return
+      end
+      for _, item in ipairs(failed) do
+        local n = item.note
+        pcall(function()
+          item.spk.playNote(n.inst, item.vol, n.pitch)
+        end)
+      end
+    end
   end
+
+  state.polyVoices = 0
 end
 
 local function musicLoop(spkList)
@@ -1387,6 +1477,7 @@ local function musicLoop(spkList)
   while state.running do
     if not state.musicOn then
       state.songName = "muted"
+      state.polyVoices = 0
       state.dirty = true
       stopSpeakers(spkList)
       while state.running and not state.musicOn do
@@ -1428,6 +1519,7 @@ local function musicLoop(spkList)
       state.dirty = true
 
       local ok = pcall(playSong, song, spkList)
+      state.polyVoices = 0
       if not ok then
         state.songName = "err"
         state.dirty = true
@@ -1437,11 +1529,13 @@ local function musicLoop(spkList)
 
     if state.skipSong or not state.musicOn then
       state.skipSong = false
+      state.polyVoices = 0
       stopSpeakers(spkList)
       idleSleep(0.05)
     end
   end
 
+  state.polyVoices = 0
   stopSpeakers(spkList)
 end
 
