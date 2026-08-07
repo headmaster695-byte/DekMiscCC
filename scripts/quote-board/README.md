@@ -1,146 +1,204 @@
-# quote-board
+# Quote Board
 
-A rotating display of semi-motivational, semi-incorrect tips and quotes in the style of HOI4 loading screens — paired with continuous elevator music and live chat capture that automatically feeds player messages into the quote rotation.
+HOI4-style rotating tips and quotes on Advanced Monitors, with multi-speaker music, live chat capture, and remote chat commands.
 
-## Requirements
+Requires **CC: Tweaked 1.119.x** (Minecraft 1.21.1 NeoForge).
 
-| Peripheral | Required? | Purpose |
-|------------|-----------|---------|
-| Advanced Monitor | **Yes** | The display surface (must be colour/advanced) |
-| Speaker | Optional | Elevator-music playback |
-| Chat Box | Optional | Captures player chat as live quotes (requires [Advanced Peripherals](https://modrinth.com/mod/advanced-peripherals)) |
+## Files
 
-The script starts in degraded mode if the Speaker or Chat Box is absent — it logs a warning, then continues with whatever is available.
+All four must sit in the **same directory** on the computer:
 
-## Installation
+| File | Role |
+|------|------|
+| `quote-board.lua` | Main program |
+| `apps.lua` | Mini-app launcher (jukebox, library, …) |
+| `songs.lua` | Song library |
+| `quotes.lua` | Built-in quote pool |
+
+## Hardware
+
+| Peripheral | Required? | Notes |
+|------------|-----------|-------|
+| Advanced Monitor (colour) | **Yes** | Touch advances quotes; multiple monitors are mirrored |
+| Speaker(s) | Optional | Multiple speakers = polyphonic voices |
+| Chat Box ([Advanced Peripherals](https://modrinth.com/mod/advanced-peripherals)) | Optional | Captures chat + accepts `#` commands |
+
+## Install
 
 ```
 wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/quote-board.lua quote-board.lua
+wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/apps.lua apps.lua
+wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/songs.lua songs.lua
+wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts/quote-board/quotes.lua quotes.lua
 ```
 
-## Usage
+## Controls
+
+| Input | Action |
+|-------|--------|
+| `R` | Next quote |
+| `P` | Previous quote |
+| `Space` | Pause / resume quote rotation |
+| `N` | Skip song |
+| `M` | Mute / unmute |
+| `-` / `=` | Volume down / up |
+| `C` | Cycle category filter |
+| `L` | Cycle music playlist |
+| `S` | Cycle atmosphere scene |
+| `A` | Open / close apps |
+| `X` | Back to launcher / board |
+| `H` | Help overlay + session stats |
+| `Q` / `Ctrl+T` | Quit |
+| Monitor touch | Next quote, or interact with apps |
+
+## Chat commands
+
+Prefix `#` (configurable). Anyone can use these when a Chat Box is present:
+
+| Command | Action |
+|---------|--------|
+| `#next` | Next quote |
+| `#prev` | Previous quote |
+| `#pause` | Pause / resume |
+| `#skip` | Skip song |
+| `#mute` | Mute / unmute |
+| `#vol 50` | Set volume 0–100 |
+| `#cat` | Cycle category filter |
+| `#playlist` | Cycle playlist |
+| `#scene dusk` | Activate an atmosphere (also `auto` / `list` / `clear`) |
+| `#help` | Help overlay |
+| `#stats` | Flash uptime / counts |
+| `#apps` | Open app launcher |
+| `#app jukebox` | Open a named app |
+| `#home` | Return to the quote board |
+
+Normal chat (not a command, long enough, not `/` or `!`) is captured as a `[ PLAYER ]` quote.
+
+## Apps
+
+Press `A` (or `#apps`) for the launcher. Quote rotation pauses while an app is open; music keeps playing.
+
+| App | What it does |
+|-----|----------------|
+| **Jukebox** | Browse all tracks, Enter/tap to queue one now |
+| **Quote Library** | Flip through the pool; Enter pins one to the board |
+| **Quote Workshop** | Create, rewrite, and enable custom quotes (all start **off**) |
+| **Atmospheres** | Scene presets: playlist + quote filter + title (optional daypart auto) |
+| **Chat Log** | Newest player quotes; Enter pins to the board |
+| **Clock** | Large live clock + uptime |
+| **Stats** | Session counts, categories, playlist sizes |
+| **Dice** | Roll d2–d100 for the room |
+| **About** | Short board blurb |
+
+### Quote Workshop
+
+Custom quotes live in `quote-board-custom.dat` and **do not appear in the rotation until enabled**.
+
+| Key | Action |
+|-----|--------|
+| `N` | New quote (starts OFF) |
+| `B` | Copy a builtin to rewrite (starts OFF) |
+| `R` / Enter | Rewrite selected custom |
+| `E` | Toggle enabled in the pool |
+| `D` | Delete |
+| In editor | Type text/source; Tab fields; on Category use ←/→ and `T` for on/off; Enter save; X cancel |
+
+`X` returns to the launcher (or the board from the launcher). `A` always jumps back to the board.
+
+### Atmospheres (scenes)
+
+Bundles that set **playlist**, **quote category**, and an optional **board title**. Seven builtins ship ready; customs save to `quote-board-scenes.dat`.
+
+| Builtin | Hours (MC `os.time`) | Playlist | Quotes |
+|---------|----------------------|----------|--------|
+| Morning Briefing | 05–11 | Elevator | TIP |
+| Open World | 11–17 | Zelda | ALL |
+| Ember Hours | 17–21 | RuneScape | WISDOM |
+| Underground | 21–05 | Undertale | QUOTE |
+| Deep Work / Raid Night / Quiet Hours | manual | various | various |
+
+- `S` or `#scene <id>` activates; `#scene auto` toggles Minecraft daypart switching (default **off**)
+- Manual `L` / `C` clears the active scene tag (keeps the playlist/filter you picked)
+- Atmospheres app: Enter activate · `T` auto · `N` new · `B` clone · `R` edit custom · `D` delete
+
+## Features
+
+### Quotes
+- Weighted rotation prefers a **different category** each time
+- Player quotes weighted higher
+- Category filter lock (`C` / `#cat`): ALL → TIP → DID YOU KNOW → …
+- Pause freezes the timer; progress bar shows time-to-next
+- Previous-quote history
+- Long quotes auto-scroll
+- Soft click on quote change (optional)
+
+### Chat
+- Fresh captures jump onto the board with a `LIVE: name` flash
+- Recent duplicate messages ignored
+- Optional ignore-list for bots / players
+- Persisted in `quote-board-chat.dat`
+
+### Music
+- **60 tracks** across elevator, Zelda-inspired, RuneScape-inspired, Undertale-inspired (remixes + originals), and original playlists
+- **A New Start** always plays first after boot
+- Shuffle bag (no repeats until the bag empties)
+- Playlists (`L` / `#playlist`): All / Elevator / Zelda-inspired / RuneScape-inspired / Undertale-inspired / Originals / Title only
+- Volume control + mute; settings persist in `quote-board-settings.dat`
+- **True polyphony:** simultaneous chord notes are fired in one tick (CC allows 8 `playNote`s/speaker/tick); with enough speakers, each voice gets a dedicated speaker (`3v | 4spk` in the footer)
+- Interruptible playback (skip/mute/chat never get swallowed)
+
+### Atmospheres
+- Preset “radio station” modes tying music + quotes + header title together
+- Optional auto daypart from Minecraft world time (`os.time`)
+- Custom scenes with hour windows, editable in the Atmospheres app
+
+### Display
+- Boot splash
+- Clock in the header (title swaps when a scene is active)
+- Mirrored across all attached colour monitors
+- Help overlay with session stats (uptime, quotes shown, chat captured)
+
+## Config
+
+Top of `quote-board.lua`:
+
+| Constant | Default | Meaning |
+|----------|---------|---------|
+| `BOARD_TITLE` | `MOTIVATIONAL CORNER` | Header title |
+| `QUOTE_INTERVAL` | `15` | Seconds between quotes |
+| `MONITOR_SCALE` | `0.5` | Text scale |
+| `CHAT_CMD_PREFIX` | `#` | Chat command prefix |
+| `MIRROR_ALL_MONITORS` | `true` | Draw on every colour monitor |
+| `SHOW_CLOCK` | `true` | Header clock |
+| `SHOW_PROGRESS_BAR` | `true` | Timer bar above footer |
+| `AUTO_SCROLL` | `true` | Scroll tall quotes |
+| `DEFAULT_VOLUME` | `1.0` | Initial volume (overridden by saved settings) |
+| `FRESH_CHAT_FOCUS` | `true` | Jump to new chat quotes |
+| `QUOTE_TICK_SOUND` | `true` | Click on quote change |
+| `IGNORE_PLAYERS` | `{}` | Names that are never captured |
+| `PLAYER_CAT_WEIGHT` | `6` | Weight for PLAYER quotes |
+| `TITLE_SONG_IDX` | `1` | First song after boot |
+
+## Persisted files
+
+| File | Contents |
+|------|----------|
+| `quote-board-chat.dat` | Captured player quotes |
+| `quote-board-custom.dat` | Workshop customs (`text`, source, category, enabled) |
+| `quote-board-scenes.dat` | Custom atmosphere scenes |
+| `quote-board-settings.dat` | Volume, mute, playlist, category filter, scene auto/id |
+
+## Layout
 
 ```
-quote-board
++------------------------------------------+
+|  * MOTIVATIONAL CORNER *           14:32 |
++------------------------------------------+
+| [ TIP ]                        next 12s  |
+|                                          |
+|   "The quote text goes here"             |
+|                            — Attribution |
+| ==================---------------------- |
+|  * Song Name | 4spk | Elevator | 80%     |
++------------------------------------------+
 ```
-
-The script runs indefinitely. Press `Ctrl+T` to stop it — the terminal and monitor are always cleaned up on exit.
-
-To run it automatically when the computer starts, add this line to `startup.lua`:
-
-```lua
-shell.run("quote-board")
-```
-
-## What It Does
-
-### Quote Display
-
-The Advanced Monitor cycles through quotes every 15 seconds (configurable). Each quote shows:
-
-- A coloured category badge
-- The quote body (word-wrapped)
-- A right-aligned attribution
-- A music info bar at the bottom
-
-**Built-in categories:**
-
-| Badge | Colour | Style |
-|-------|--------|-------|
-| `[ TIP ]` | Yellow | Subtly wrong gameplay advice |
-| `[ DID YOU KNOW ]` | Cyan | Comedically incorrect facts |
-| `[ WISDOM ]` | Lime | Motivational but undercut by reality |
-| `[ LOADING ]` | Light grey | Meta/loading-screen humour |
-| `[ QUOTE ]` | Orange | Real-life misquotations and famous lines taken slightly out of context |
-| `[ PLAYER ]` | Pink | Captured verbatim from player chat |
-
-### Elevator Music
-
-The Speaker plays five looping instrumental phrases:
-
-| Track | Instrument | Mood |
-|-------|-----------|------|
-| Bossa Waiting | Harp | Smooth, chill |
-| Corporate Zen | Flute | Ascending / descending scale |
-| Executive Chime | Chime | Gentle waltz-like arpeggio |
-| Lobby Bell | Bell | Descending melodic phrase |
-| Penthouse Suite | Harp + Bell | Layered texture |
-
-Songs cycle continuously without gaps. The currently playing track name is shown in the monitor's bottom bar.
-
-### Chat Capture
-
-When a Chat Box peripheral is attached, the script automatically captures player messages and adds them to the quote rotation under the `[ PLAYER ]` category.
-
-**Detection** — the script tries several peripheral type strings that Advanced Peripherals has used across versions (`chatBox`, `chat_box`, `chatbox`) and also falls back to scanning all attached peripherals for any type name containing "chat". On startup, every attached peripheral is printed to the terminal so you can see exactly what was found.
-
-**Events** — the script listens for both `"chat"` and `"chat_message"` event names (Advanced Peripherals has shipped both). You do not need to know which one your version uses.
-
-**Manual override** — if auto-detection still fails, set `CHAT_BOX_NAME` in the config section to the exact peripheral side or name shown in the startup diagnostics (e.g. `"left"`, `"peripheral_0"`).
-
-**Message filter:**
-- Minimum length: 10 characters (configurable via `MIN_MSG_LEN`)
-- Ignored: messages starting with `/` (commands) or `!` (bot prefixes)
-
-Captured quotes are stored persistently in `quote-board-chat.dat` so they survive reboots. Up to 50 are kept; the oldest is dropped when the limit is reached.
-
-## Monitor Setup
-
-Place **Advanced Monitor** blocks adjacent to (or in a chain connected to) the computer. A 3-wide × 2-tall array gives a good amount of readable space. The default text scale is `0.5`, which packs in more text per block.
-
-To send output to a specific monitor side (e.g. if `peripheral.find` picks the wrong one), wrap the call in `startup.lua`:
-
-```lua
-local mon = peripheral.wrap("monitor_0")  -- replace with your monitor name
-term.redirect(mon)
-shell.run("quote-board")
-term.restore()
-```
-
-## Configuration
-
-Open `quote-board.lua` in the editor (`edit quote-board.lua`) and change the values in the **Configuration** block near the top:
-
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `QUOTE_INTERVAL` | `15` | Seconds each quote is shown |
-| `MONITOR_SCALE` | `0.5` | Text scale sent to the monitor |
-| `CHAT_FILE` | `"quote-board-chat.dat"` | File where chat quotes are saved |
-| `MAX_CHAT_QUOTES` | `50` | Maximum chat quotes to keep |
-| `MIN_MSG_LEN` | `10` | Minimum chat message length to capture |
-| `CHAT_BOX_NAME` | `""` | Force a specific peripheral side/name for the Chat Box (blank = auto) |
-
-## Adding More Built-in Quotes
-
-Add entries to the `BUILTIN_QUOTES` table inside `quote-board.lua`. Each entry is a three-element array:
-
-```lua
-{ "Your quote text here.", "Attribution", "CATEGORY" },
-```
-
-Valid categories: `"TIP"`, `"DID YOU KNOW"`, `"WISDOM"`, `"LOADING"`, `"QUOTE"` (or any new string — just add a colour for it in `CATEGORY_COLOUR`).
-
-The `"QUOTE"` category is intended for real-life quotes, famous misquotations, and lines taken slightly out of context. Attribution format is `"Person/Source — brief clarification"`, e.g.:
-
-```lua
-{ "Elementary, my dear Watson.", "Sherlock Holmes — never written by Doyle", "QUOTE" },
-```
-
-## Adding More Music
-
-Add a song to the `SONGS` table. Each note is `{ instrument, volume, pitch, sleep_after_seconds }`:
-
-```lua
-{
-  name  = "My New Track",
-  notes = {
-    { "harp", 1.0, 6,  0.4 },   -- C4
-    { "harp", 1.0, 10, 0.4 },   -- E4
-    { "harp", 1.0, 13, 0.8 },   -- G4 (longer)
-    -- ...
-  },
-},
-```
-
-Pitch reference: `C4=6  D4=8  E4=10  F4=11  G4=13  A4=15  B4=17  C5=18`  
-Valid instruments: `"harp"` `"flute"` `"bell"` `"chime"` `"xylophone"` `"guitar"` `"bass"` `"banjo"` `"pling"` and others listed in the CC:T docs.
