@@ -217,6 +217,7 @@ local state = {
   sceneTitle    = nil,          -- header override (nil = BOARD_TITLE)
   sceneAuto     = SCENE_AUTO_DEFAULT,
   sceneCheckAt  = 0,            -- next auto daypart check (utc ms)
+  toolRow       = nil,          -- last drawn toolbar row for touch hit-tests
 }
 
 -- Forward declarations filled in after helpers exist
