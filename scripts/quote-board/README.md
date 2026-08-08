@@ -143,7 +143,7 @@ Bundles that set **playlist**, **quote category**, and an optional **board title
 - **A New Start** always plays first after boot
 - Shuffle bag (no repeats until the bag empties)
 - Playlists (`L` / `#playlist`): All / Elevator / Zelda-inspired / RuneScape / Undertale-inspired / Originals / Title only
-- RuneScape playlist includes fan note-block remixes of actual OST tracks (Scape Main, Sea Shanty 2, Harmony, …)
+- RuneScape playlist includes note-block versions of actual OST tracks (Scape Main, Sea Shanty 2, Harmony, …)
 - Volume control + mute; settings persist in `quote-board-settings.dat`
 - **True polyphony:** simultaneous chord notes are fired in one tick (CC allows 8 `playNote`s/speaker/tick); with enough speakers, each voice gets a dedicated speaker (`3v | 4spk` in the footer)
 - Interruptible playback (skip/mute/chat never get swallowed)

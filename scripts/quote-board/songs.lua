@@ -4368,12 +4368,12 @@ local SONGS = {
 
 
 
-  -- ── RuneScape OST (fan note-block remixes of actual tracks) ───────────────
-  -- Private/CC use. Original music © Jagex. Arranged for note blocks.
+  -- ── RuneScape OST (note-block versions of the actual tracks) ──────────────
+  -- Private/CC use. Melodies arranged for note blocks.
 
   {
-    -- RuneScape OST — Scape Main fan note-block remix
-    name     = "Scape Main (RS Remix)",
+    -- RuneScape OST — Scape Main note-block version
+    name     = "Scape Main",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -4483,8 +4483,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Newbie Melody fan note-block remix
-    name     = "Newbie Melody (RS Remix)",
+    -- RuneScape OST — Newbie Melody note-block version
+    name     = "Newbie Melody",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -4591,8 +4591,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Harmony (Lumbridge) fan note-block remix
-    name     = "Harmony (RS Remix)",
+    -- RuneScape OST — Harmony (Lumbridge) note-block version
+    name     = "Harmony",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -4688,8 +4688,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Autumn Voyage fan note-block remix
-    name     = "Autumn Voyage (RS Remix)",
+    -- RuneScape OST — Autumn Voyage note-block version
+    name     = "Autumn Voyage",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -4790,8 +4790,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Sea Shanty 2 fan note-block remix
-    name     = "Sea Shanty 2 (RS Remix)",
+    -- RuneScape OST — Sea Shanty 2 note-block version
+    name     = "Sea Shanty 2",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -4902,8 +4902,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Book of Spells fan note-block remix
-    name     = "Book of Spells (RS Remix)",
+    -- RuneScape OST — Book of Spells note-block version
+    name     = "Book of Spells",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -4990,8 +4990,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Adventure fan note-block remix
-    name     = "Adventure (RS Remix)",
+    -- RuneScape OST — Adventure note-block version
+    name     = "Adventure",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5097,8 +5097,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Barbarianism fan note-block remix
-    name     = "Barbarianism (RS Remix)",
+    -- RuneScape OST — Barbarianism note-block version
+    name     = "Barbarianism",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5208,8 +5208,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Fanfare fan note-block remix
-    name     = "Fanfare (RS Remix)",
+    -- RuneScape OST — Fanfare note-block version
+    name     = "Fanfare",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5313,8 +5313,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Medieval fan note-block remix
-    name     = "Medieval (RS Remix)",
+    -- RuneScape OST — Medieval note-block version
+    name     = "Medieval",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5395,8 +5395,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Garden fan note-block remix
-    name     = "Garden (RS Remix)",
+    -- RuneScape OST — Garden note-block version
+    name     = "Garden",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5495,8 +5495,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Yesteryear fan note-block remix
-    name     = "Yesteryear (RS Remix)",
+    -- RuneScape OST — Yesteryear note-block version
+    name     = "Yesteryear",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5577,8 +5577,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Dream fan note-block remix
-    name     = "Dream (RS Remix)",
+    -- RuneScape OST — Dream note-block version
+    name     = "Dream",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5646,8 +5646,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Background fan note-block remix
-    name     = "Background (RS Remix)",
+    -- RuneScape OST — Background note-block version
+    name     = "Background",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5744,8 +5744,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Flute Salad fan note-block remix
-    name     = "Flute Salad (RS Remix)",
+    -- RuneScape OST — Flute Salad note-block version
+    name     = "Flute Salad",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5849,8 +5849,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Village fan note-block remix
-    name     = "Village (RS Remix)",
+    -- RuneScape OST — Village note-block version
+    name     = "Village",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -5947,8 +5947,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Expedition fan note-block remix
-    name     = "Expedition (RS Remix)",
+    -- RuneScape OST — Expedition note-block version
+    name     = "Expedition",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -6053,8 +6053,8 @@ local SONGS = {
   },
 
   {
-    -- RuneScape OST — Wander fan note-block remix
-    name     = "Wander (RS Remix)",
+    -- RuneScape OST — Wander note-block version
+    name     = "Wander",
     playlist = "runescape",
     voices = {
       { -- V1
@@ -6137,7 +6137,7 @@ local SONGS = {
   -- ── Undertale (fan remixes + style originals) ─────────────────────────────
   -- Note-block fan arrangements for personal/CC use. Undertale by Toby Fox.
   {
-    -- Undertale — Once Upon a Time fan note-block remix
+    -- Undertale — Once Upon a Time note-block version
     name     = "Once Upon a Time (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6247,7 +6247,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Fallen Down fan note-block remix
+    -- Undertale — Fallen Down note-block version
     name     = "Fallen Down (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6311,7 +6311,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Ruins fan note-block remix
+    -- Undertale — Ruins note-block version
     name     = "Ruins (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6397,7 +6397,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Enemy Approaching fan note-block remix
+    -- Undertale — Enemy Approaching note-block version
     name     = "Enemy Approaching (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6483,7 +6483,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Snowy fan note-block remix
+    -- Undertale — Snowy note-block version
     name     = "Snowy (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6542,7 +6542,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Bonetrousle fan note-block remix
+    -- Undertale — Bonetrousle note-block version
     name     = "Bonetrousle (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6636,7 +6636,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Waterfall fan note-block remix
+    -- Undertale — Waterfall note-block version
     name     = "Waterfall (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6691,7 +6691,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Spear of Justice fan note-block remix
+    -- Undertale — Spear of Justice note-block version
     name     = "Spear of Justice (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6777,7 +6777,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Megalovania short fan note-block remix
+    -- Undertale — Megalovania short note-block version
     name     = "Megalovania (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -6933,7 +6933,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Death by Glamour fan note-block remix
+    -- Undertale — Death by Glamour note-block version
     name     = "Death by Glamour (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -7001,7 +7001,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Heartache fan note-block remix
+    -- Undertale — Heartache note-block version
     name     = "Heartache (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -7056,7 +7056,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Home fan note-block remix
+    -- Undertale — Home note-block version
     name     = "Home (UT Remix)",
     playlist = "undertale",
     voices = {
@@ -7150,7 +7150,7 @@ local SONGS = {
   },
 
   {
-    -- Undertale — Another Medium fan note-block remix
+    -- Undertale — Another Medium note-block version
     name     = "Another Medium (UT Remix)",
     playlist = "undertale",
     voices = {
