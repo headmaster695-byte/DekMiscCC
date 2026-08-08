@@ -217,10 +217,12 @@ local state = {
   sceneTitle    = nil,          -- header override (nil = BOARD_TITLE)
   sceneAuto     = SCENE_AUTO_DEFAULT,
   sceneCheckAt  = 0,            -- next auto daypart check (utc ms)
+  toolRow       = nil,          -- last drawn toolbar row for touch hit-tests
 }
 
 -- Forward declarations filled in after helpers exist
 local openApp, closeApp, goAppHome, queueSong, showQuoteIndex
+local buildToolbarButtons, hitTestToolbar, handleBoardButton
 local appContext
 
 local CHAT_EVENT_NAMES = { chat = true, chat_message = true }
@@ -832,12 +834,19 @@ local function drawScreenOn(mon, quote)
     wrapped[#wrapped] = wrapped[#wrapped] .. "\xE2\x80\x9D"
   end
 
-  -- Leave room for attribution, touch toolbar, progress, status.
-  local bodyStart, bodyEnd = 5, h - 5
+  -- Bottom chrome: attribution / toolbar / progress / status.
+  -- Toolbar row is always reserved so touch targets stay stable.
+  local toolRow = (h >= 6) and (h - 2) or h
+  local progRow = (h >= 7) and (h - 1) or nil
+  local statusRow = h
+  local attrRow = (h >= 8) and (h - 4) or nil
+  local bodyStart = 5
+  local bodyEnd = h - ((h >= 8) and 5 or ((h >= 6) and 3 or 1))
   if bodyEnd < bodyStart then bodyEnd = bodyStart end
   local bodyHeight = bodyEnd - bodyStart + 1
   state.bodyLines = #wrapped
   state.bodyHeight = bodyHeight
+  state.toolRow = toolRow
 
   if AUTO_SCROLL and #wrapped > bodyHeight then
     local maxOff = #wrapped - bodyHeight
@@ -862,48 +871,47 @@ local function drawScreenOn(mon, quote)
   end
 
   -- Attribution
-  mon.setTextColour(colours.lightGrey)
-  local attr = "— " .. source
-  local attrRow = h - 4
-  if attrRow > bodyStart then
+  if attrRow and attrRow > bodyStart then
+    mon.setTextColour(colours.lightGrey)
     mon.setCursorPos(2, attrRow)
-    mon.write(attr:sub(1, w - 2))
+    mon.write(("— " .. source):sub(1, w - 2))
   end
 
-  -- Touch toolbar (row h-2)
-  if h >= 8 then
+  -- Touch toolbar (high-contrast chips)
+  do
     local buttons = buildToolbarButtons(w)
-    mon.setCursorPos(1, h - 2)
-    mon.setBackgroundColour(colours.grey)
+    mon.setCursorPos(1, toolRow)
+    mon.setBackgroundColour(colours.blue)
     mon.clearLine()
     for _, b in ipairs(buttons) do
       local hot = (b.id == "mute" and not state.musicOn)
         or (b.id == "pause" and state.paused)
-      mon.setBackgroundColour(hot and colours.red or colours.lightGrey)
+      mon.setBackgroundColour(hot and colours.red or colours.yellow)
       mon.setTextColour(colours.black)
-      mon.setCursorPos(b.x1, h - 2)
+      mon.setCursorPos(b.x1, toolRow)
       mon.write(b.text:sub(1, b.x2 - b.x1 + 1))
     end
     mon.setBackgroundColour(colours.black)
   end
 
-  -- Progress bar / divider (row h-1)
-  mon.setCursorPos(1, h - 1)
-  mon.setBackgroundColour(colours.black)
-  if SHOW_PROGRESS_BAR and not state.paused then
-    local frac = progressFraction()
-    local filled = math.floor(w * frac + 0.5)
-    mon.setTextColour(colours.grey)
-    mon.write(string.rep("=", math.max(0, filled)))
-    mon.setTextColour(colours.grey)
-    mon.write(string.rep("-", math.max(0, w - filled)))
-  else
-    mon.setTextColour(colours.grey)
-    mon.write(string.rep(state.paused and "=" or "-", w))
+  -- Progress bar / divider
+  if progRow then
+    mon.setCursorPos(1, progRow)
+    mon.setBackgroundColour(colours.black)
+    if SHOW_PROGRESS_BAR and not state.paused then
+      local frac = progressFraction()
+      local filled = math.floor(w * frac + 0.5)
+      mon.setTextColour(colours.grey)
+      mon.write(string.rep("=", math.max(0, filled)))
+      mon.write(string.rep("-", math.max(0, w - filled)))
+    else
+      mon.setTextColour(colours.grey)
+      mon.write(string.rep(state.paused and "=" or "-", w))
+    end
   end
 
-  -- Status footer (row h)
-  mon.setCursorPos(1, h)
+  -- Status footer
+  mon.setCursorPos(1, statusRow)
   mon.setBackgroundColour(colours.grey)
   mon.clearLine()
   mon.setTextColour(state.musicOn and colours.green or colours.red)
@@ -938,9 +946,8 @@ local function drawScreenOn(mon, quote)
     bits[#bits + 1] = "chat:" .. state.chatCount
   end
 
-  local musicLabel = " *" .. table.concat(bits, "|")
-  mon.setCursorPos(1, h)
-  mon.write(musicLabel:sub(1, w))
+  mon.setCursorPos(1, statusRow)
+  mon.write((" *" .. table.concat(bits, "|")):sub(1, w))
 
   mon.setBackgroundColour(colours.black)
   mon.setTextColour(colours.white)
@@ -973,9 +980,11 @@ local function drawAll(quote)
   end
   for _, mon in ipairs(list) do
     if state.app then
-      pcall(drawAppOn, mon)
+      local ok, err = pcall(drawAppOn, mon)
+      if not ok then flash("App draw: " .. tostring(err):sub(1, 40), 2500) end
     elseif isValidQuote(quote) then
-      pcall(drawScreenOn, mon, quote)
+      local ok, err = pcall(drawScreenOn, mon, quote)
+      if not ok then flash("Draw: " .. tostring(err):sub(1, 40), 2500) end
     end
   end
 end
@@ -1317,9 +1326,10 @@ local function toggleMusic()
 end
 
 -- ============================================================
--- On-monitor touch toolbar
+-- On-monitor touch toolbar (assigned to forward-declared locals
+-- so drawScreenOn can call them safely).
 -- ============================================================
-local function buildToolbarButtons(w)
+buildToolbarButtons = function(w)
   local muteLabel = state.musicOn and "Mute" or "Unmute"
   local pauseLabel = state.paused and "Go" or "Pause"
   local long = {
@@ -1334,6 +1344,16 @@ local function buildToolbarButtons(w)
     { id = "apps",  text = " Apps " },
   }
   local short = {
+    { id = "prev",  text = " < " },
+    { id = "pause", text = state.paused and " Go " or " || " },
+    { id = "next",  text = " > " },
+    { id = "mute",  text = state.musicOn and " Mute " or " Unmute " },
+    { id = "skip",  text = " Skip " },
+    { id = "voldn", text = " - " },
+    { id = "volup", text = " + " },
+    { id = "apps",  text = " Apps " },
+  }
+  local mini = {
     { id = "prev",  text = "<" },
     { id = "pause", text = state.paused and ">" or "=" },
     { id = "next",  text = ">" },
@@ -1341,7 +1361,6 @@ local function buildToolbarButtons(w)
     { id = "skip",  text = "N" },
     { id = "voldn", text = "-" },
     { id = "volup", text = "+" },
-    { id = "scene", text = "S" },
     { id = "apps",  text = "A" },
   }
 
@@ -1361,14 +1380,14 @@ local function buildToolbarButtons(w)
     return buttons
   end
 
-  return pack(long) or pack(short) or {
+  return pack(long) or pack(short) or pack(mini) or {
     { id = "next", text = ">", x1 = 1, x2 = 1 },
     { id = "mute", text = state.musicOn and "M" or "U", x1 = 3, x2 = 3 },
     { id = "apps", text = "A", x1 = 5, x2 = 5 },
   }
 end
 
-local function handleBoardButton(id)
+handleBoardButton = function(id)
   if id == "prev" then
     previousQuote()
     return "redraw"
@@ -1399,9 +1418,9 @@ local function handleBoardButton(id)
   return nil
 end
 
-local function hitTestToolbar(x, y, w, h)
-  -- Toolbar lives on row h-2 (above progress + status).
-  if y ~= h - 2 then return nil end
+hitTestToolbar = function(x, y, w, h)
+  local toolRow = state.toolRow or ((h >= 6) and (h - 2) or h)
+  if y ~= toolRow then return nil end
   local buttons = buildToolbarButtons(w)
   for _, b in ipairs(buttons) do
     if x >= b.x1 and x <= b.x2 then
@@ -1799,23 +1818,32 @@ end
 -- Music runs as a coroutine resumed from the single UI event loop.
 -- This avoids the old parallel.waitForAll race where the music thread
 -- stole key/touch events (breaking unmute) and could abort songs early.
+--
+-- IMPORTANT: use os.epoch("utc") for wake deadlines, NOT os.clock().
+-- In CC, os.clock() is CPU-time and barely advances during pullEvent waits,
+-- which froze playback after the first yield.
 local musicThread = nil
-local musicWakeAt = 0 -- os.clock() deadline
+local musicWakeAt = 0 -- utc ms deadline
 local pumpMusic -- forward declare; defined after musicLoop
+
+local function nowMs()
+  return os.epoch("utc")
+end
 
 local function musicYield(seconds)
   local sec = tonumber(seconds) or 0
   if sec < 0 then sec = 0 end
-  musicWakeAt = os.clock() + sec
+  musicWakeAt = nowMs() + math.floor(sec * 1000)
   coroutine.yield("wait")
 end
 
 -- Used during note playback — abort on mute/skip/quit.
 local function coopSleep(seconds)
-  local tEnd = os.clock() + (tonumber(seconds) or 0)
-  while state.running and os.clock() < tEnd do
+  local tEnd = nowMs() + math.floor((tonumber(seconds) or 0) * 1000)
+  while state.running and nowMs() < tEnd do
     if shouldAbortPlayback() then return end
-    local slice = math.min(0.05, tEnd - os.clock())
+    local left = (tEnd - nowMs()) / 1000
+    local slice = math.min(0.05, left)
     if slice <= 0 then return end
     musicYield(slice)
   end
@@ -1823,9 +1851,10 @@ end
 
 -- Used while muted / idle — must NOT treat mute as abort (that busy-loops).
 local function idleSleep(seconds)
-  local tEnd = os.clock() + (tonumber(seconds) or 0)
-  while state.running and os.clock() < tEnd do
-    local slice = math.min(0.05, tEnd - os.clock())
+  local tEnd = nowMs() + math.floor((tonumber(seconds) or 0) * 1000)
+  while state.running and nowMs() < tEnd do
+    local left = (tEnd - nowMs()) / 1000
+    local slice = math.min(0.05, left)
     if slice <= 0 then return end
     musicYield(slice)
   end
@@ -2076,13 +2105,14 @@ pumpMusic = function()
     end)
     musicWakeAt = 0
   end
-  if os.clock() < musicWakeAt then return end
-  local ok = coroutine.resume(musicThread)
+  if nowMs() < musicWakeAt then return end
+  local ok, err = coroutine.resume(musicThread)
   if not ok then
     state.songName = "err"
     state.dirty = true
     musicThread = nil
-    musicWakeAt = os.clock() + 0.5
+    musicWakeAt = nowMs() + 500
+    flash("Music error: " .. tostring(err):sub(1, 40), 3000)
   end
 end
 
@@ -2136,7 +2166,7 @@ local function uiLoop()
 
     -- Sleep until UI tick or music needs another resume, whichever is sooner.
     local wait = UI_TICK
-    local untilMusic = musicWakeAt - os.clock()
+    local untilMusic = (musicWakeAt - nowMs()) / 1000
     if untilMusic > 0 and untilMusic < wait then
       wait = math.max(0.05, untilMusic)
     end
