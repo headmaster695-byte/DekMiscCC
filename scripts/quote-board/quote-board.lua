@@ -94,9 +94,9 @@ local PLAYLIST_ORDER = { "all", "elevator", "zelda", "runescape", "undertale", "
 local PLAYLIST_LABEL = {
   all       = "All tracks",
   elevator  = "Elevator",
-  zelda     = "Zelda-inspired",
+  zelda     = "Zelda",
   runescape = "RuneScape",
-  undertale = "Undertale-inspired",
+  undertale = "Undertale",
   original  = "Originals",
   title     = "Title only",
 }
