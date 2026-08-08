@@ -726,7 +726,8 @@ local function drawHelp(mon, w, h)
     "S atmosphere scene",
     "A apps     X back",
     "H help     Q quit",
-    "Touch monitor = next",
+    "Touch toolbar: Mute Skip Apps…",
+    "Tap quote body = next",
     "",
     "Chat: #scene dusk",
     "      #scene auto|list",
@@ -831,7 +832,8 @@ local function drawScreenOn(mon, quote)
     wrapped[#wrapped] = wrapped[#wrapped] .. "\xE2\x80\x9D"
   end
 
-  local bodyStart, bodyEnd = 5, h - 4
+  -- Leave room for attribution, touch toolbar, progress, status.
+  local bodyStart, bodyEnd = 5, h - 5
   if bodyEnd < bodyStart then bodyEnd = bodyStart end
   local bodyHeight = bodyEnd - bodyStart + 1
   state.bodyLines = #wrapped
@@ -862,14 +864,32 @@ local function drawScreenOn(mon, quote)
   -- Attribution
   mon.setTextColour(colours.lightGrey)
   local attr = "— " .. source
-  local attrRow = h - 3
+  local attrRow = h - 4
   if attrRow > bodyStart then
-    mon.setCursorPos(math.max(1, w - #attr - 1), attrRow)
+    mon.setCursorPos(2, attrRow)
     mon.write(attr:sub(1, w - 2))
   end
 
-  -- Progress bar / divider
+  -- Touch toolbar (row h-2)
+  if h >= 8 then
+    local buttons = buildToolbarButtons(w)
+    mon.setCursorPos(1, h - 2)
+    mon.setBackgroundColour(colours.grey)
+    mon.clearLine()
+    for _, b in ipairs(buttons) do
+      local hot = (b.id == "mute" and not state.musicOn)
+        or (b.id == "pause" and state.paused)
+      mon.setBackgroundColour(hot and colours.red or colours.lightGrey)
+      mon.setTextColour(colours.black)
+      mon.setCursorPos(b.x1, h - 2)
+      mon.write(b.text:sub(1, b.x2 - b.x1 + 1))
+    end
+    mon.setBackgroundColour(colours.black)
+  end
+
+  -- Progress bar / divider (row h-1)
   mon.setCursorPos(1, h - 1)
+  mon.setBackgroundColour(colours.black)
   if SHOW_PROGRESS_BAR and not state.paused then
     local frac = progressFraction()
     local filled = math.floor(w * frac + 0.5)
@@ -882,7 +902,7 @@ local function drawScreenOn(mon, quote)
     mon.write(string.rep(state.paused and "=" or "-", w))
   end
 
-  -- Footer
+  -- Status footer (row h)
   mon.setCursorPos(1, h)
   mon.setBackgroundColour(colours.grey)
   mon.clearLine()
@@ -918,7 +938,7 @@ local function drawScreenOn(mon, quote)
     bits[#bits + 1] = "chat:" .. state.chatCount
   end
 
-  local musicLabel = "  * " .. table.concat(bits, " | ")
+  local musicLabel = " *" .. table.concat(bits, "|")
   mon.setCursorPos(1, h)
   mon.write(musicLabel:sub(1, w))
 
@@ -1222,7 +1242,8 @@ local function checkSceneAuto()
   local scene = pickDaypartScene()
   if not scene then return nil end
   if state.sceneId == scene.id then return nil end
-  return applyScene(scene, { silent = false })
+  -- Apply quietly when only branding/filter changes; still skip if playlist changes.
+  return applyScene(scene, { silent = true })
 end
 
 local function cycleScene()
@@ -1279,15 +1300,115 @@ local function showStats()
 end
 
 local function toggleMusic()
-  state.musicOn = not state.musicOn
-  if not state.musicOn then
+  if state.musicOn then
+    state.musicOn = false
     state.skipSong = true
     stopSpeakers()
     state.songName = "muted"
+    flash("Music muted", 1500)
+  else
+    -- Explicit unmute path: clear abort flags so the music coroutine can resume.
+    state.musicOn = true
+    state.skipSong = false
+    flash("Music on", 1500)
   end
   saveSettings()
   state.dirty = true
-  flash(state.musicOn and "Music on" or "Music muted", 1500)
+end
+
+-- ============================================================
+-- On-monitor touch toolbar
+-- ============================================================
+local function buildToolbarButtons(w)
+  local muteLabel = state.musicOn and "Mute" or "Unmute"
+  local pauseLabel = state.paused and "Go" or "Pause"
+  local long = {
+    { id = "prev",  text = " < " },
+    { id = "pause", text = " " .. pauseLabel .. " " },
+    { id = "next",  text = " > " },
+    { id = "mute",  text = " " .. muteLabel .. " " },
+    { id = "skip",  text = " Skip " },
+    { id = "voldn", text = " - " },
+    { id = "volup", text = " + " },
+    { id = "scene", text = " Scene " },
+    { id = "apps",  text = " Apps " },
+  }
+  local short = {
+    { id = "prev",  text = "<" },
+    { id = "pause", text = state.paused and ">" or "=" },
+    { id = "next",  text = ">" },
+    { id = "mute",  text = state.musicOn and "M" or "U" },
+    { id = "skip",  text = "N" },
+    { id = "voldn", text = "-" },
+    { id = "volup", text = "+" },
+    { id = "scene", text = "S" },
+    { id = "apps",  text = "A" },
+  }
+
+  local function pack(specs)
+    local buttons, x, gap = {}, 1, 1
+    for _, spec in ipairs(specs) do
+      local width = #spec.text
+      if x + width - 1 > w then return nil end
+      buttons[#buttons + 1] = {
+        id = spec.id,
+        text = spec.text,
+        x1 = x,
+        x2 = x + width - 1,
+      }
+      x = x + width + gap
+    end
+    return buttons
+  end
+
+  return pack(long) or pack(short) or {
+    { id = "next", text = ">", x1 = 1, x2 = 1 },
+    { id = "mute", text = state.musicOn and "M" or "U", x1 = 3, x2 = 3 },
+    { id = "apps", text = "A", x1 = 5, x2 = 5 },
+  }
+end
+
+local function handleBoardButton(id)
+  if id == "prev" then
+    previousQuote()
+    return "redraw"
+  elseif id == "next" then
+    advanceQuote()
+    return "redraw"
+  elseif id == "pause" then
+    togglePause()
+    return "redraw"
+  elseif id == "mute" then
+    toggleMusic()
+    return state.musicOn and "redraw" or "abort_music"
+  elseif id == "skip" then
+    requestSkipSong()
+    return "abort_music"
+  elseif id == "voldn" then
+    adjustVolume(-0.1)
+    return "redraw"
+  elseif id == "volup" then
+    adjustVolume(0.1)
+    return "redraw"
+  elseif id == "scene" then
+    return cycleScene() or "redraw"
+  elseif id == "apps" then
+    openApp("launcher")
+    return "redraw"
+  end
+  return nil
+end
+
+local function hitTestToolbar(x, y, w, h)
+  -- Toolbar lives on row h-2 (above progress + status).
+  if y ~= h - 2 then return nil end
+  local buttons = buildToolbarButtons(w)
+  for _, b in ipairs(buttons) do
+    if x >= b.x1 and x <= b.x2 then
+      return b.id
+    end
+  end
+  return nil
 end
 
 -- ============================================================
@@ -1622,25 +1743,45 @@ local function handleGlobalEvent(ev)
       return "redraw"
     end
   elseif kind == "monitor_touch" then
-    local _, x, y = ev[2], ev[3], ev[4]
-    -- Advanced Peripherals / CC: monitor_touch name, x, y — ev[2] may be side
+    local side, x, y = ev[2], ev[3], ev[4]
+    -- CC: monitor_touch side, x, y — tolerate odd shapes
     if type(x) ~= "number" then
       x, y = ev[2], ev[3]
+      side = nil
     end
+    x, y = x or 1, y or 1
+
+    local mon = monitors[1]
+    if type(side) == "string" then
+      local named = peripheral.wrap(side)
+      if named then mon = named end
+    end
+    local w, h = 20, 10
+    if mon then
+      local okSize, mw, mh = pcall(mon.getSize)
+      if okSize and type(mw) == "number" then w, h = mw, mh end
+    end
+
     if state.app and state.app.onTouch then
-      local mon = monitors[1]
-      local w, h = 20, 10
-      if mon then w, h = mon.getSize() end
-      local result = handleAppAction(state.app:onTouch(x or 1, y or 1, w, h))
+      local result = handleAppAction(state.app:onTouch(x, y, w, h))
       if result then return result end
       return "redraw"
     end
+
+    if os.epoch("utc") < state.helpUntil then
+      state.helpUntil = 0
+      return "redraw"
+    end
+
+    -- Prefer on-screen toolbar buttons over "tap anywhere = next".
+    local btn = hitTestToolbar(x, y, w, h)
+    if btn then
+      return handleBoardButton(btn) or "redraw"
+    end
+
     if TOUCH_ADVANCES then
-      if os.epoch("utc") < state.helpUntil then
-        state.helpUntil = 0
-      else
-        advanceQuote()
-      end
+      -- Tap quote body / status to advance; toolbar has dedicated controls.
+      advanceQuote()
       return "redraw"
     end
   elseif CHAT_EVENT_NAMES[kind] then
@@ -1655,110 +1796,38 @@ local function shouldAbortPlayback()
   return (not state.running) or (not state.musicOn) or state.skipSong
 end
 
--- Forward non-timer events to the UI loop without busy-spinning.
--- abortFn: optional; when it returns true, sleep ends early.
-local function yieldSleep(seconds, abortFn)
-  if seconds <= 0 then return end
-  local tEnd = os.clock() + seconds
-  while state.running and os.clock() < tEnd do
-    if abortFn and abortFn() then return end
-    local slice = math.min(0.05, tEnd - os.clock())
-    if slice <= 0 then return end
-    local timerId = os.startTimer(slice)
-    local ev = { os.pullEventRaw() }
-    if ev[1] == "timer" and ev[2] == timerId then
-      -- slice finished
-    elseif ev[1] == "terminate" then
-      state.running = false
-      return
-    else
-      -- Hand off to uiLoop; yield once more so it can drain the event.
-      os.queueEvent(table.unpack(ev))
-      local handoff = os.startTimer(0)
-      while true do
-        local ev2 = { os.pullEventRaw() }
-        if ev2[1] == "timer" and ev2[2] == handoff then
-          break
-        elseif ev2[1] == "terminate" then
-          state.running = false
-          return
-        else
-          os.queueEvent(table.unpack(ev2))
-        end
-      end
-    end
-  end
+-- Music runs as a coroutine resumed from the single UI event loop.
+-- This avoids the old parallel.waitForAll race where the music thread
+-- stole key/touch events (breaking unmute) and could abort songs early.
+local musicThread = nil
+local musicWakeAt = 0 -- os.clock() deadline
+local pumpMusic -- forward declare; defined after musicLoop
+
+local function musicYield(seconds)
+  local sec = tonumber(seconds) or 0
+  if sec < 0 then sec = 0 end
+  musicWakeAt = os.clock() + sec
+  coroutine.yield("wait")
 end
 
 -- Used during note playback — abort on mute/skip/quit.
 local function coopSleep(seconds)
-  yieldSleep(seconds, shouldAbortPlayback)
+  local tEnd = os.clock() + (tonumber(seconds) or 0)
+  while state.running and os.clock() < tEnd do
+    if shouldAbortPlayback() then return end
+    local slice = math.min(0.05, tEnd - os.clock())
+    if slice <= 0 then return end
+    musicYield(slice)
+  end
 end
 
 -- Used while muted / idle — must NOT treat mute as abort (that busy-loops).
 local function idleSleep(seconds)
-  yieldSleep(seconds, function()
-    return not state.running
-  end)
-end
-
--- ============================================================
--- UI loop
--- ============================================================
-local function updateScroll()
-  if not AUTO_SCROLL then return end
-  if state.bodyLines <= state.bodyHeight then return end
-  local now = os.epoch("utc")
-  if now < state.scrollAt then return end
-  state.scrollAt = now + math.floor(SCROLL_SECONDS * 1000)
-  local maxOff = state.bodyLines - state.bodyHeight
-  state.scrollOffset = state.scrollOffset + 1
-  if state.scrollOffset > maxOff then
-    state.scrollOffset = 0
-  end
-  state.dirty = true
-end
-
-local function uiLoop()
-  scheduleNextQuote(QUOTE_INTERVAL)
-  state.startedAt = os.epoch("utc")
-
-  while state.running do
-    -- Atmosphere daypart auto-switch (Minecraft os.time hours).
-    local sceneResult = checkSceneAuto()
-    if sceneResult == "abort_music" then
-      state.skipSong = true
-      stopSpeakers()
-    end
-
-    -- Quote rotation pauses while a mini-app is open.
-    if (not state.app) and (not state.paused) and os.epoch("utc") >= state.nextQuoteAt then
-      advanceQuote()
-    end
-    if not state.app then
-      updateScroll()
-    elseif state.app.tick then
-      local tickResult = handleAppAction(state.app:tick())
-      if tickResult == "quit" then return end
-    end
-
-    local q = allQuotes[state.quoteIdx]
-    drawAll(q)
-    state.dirty = false
-
-    local timerId = os.startTimer(UI_TICK)
-    while state.running do
-      local ev = { os.pullEventRaw() }
-      if ev[1] == "timer" and ev[2] == timerId then
-        break
-      end
-      local result = handleGlobalEvent(ev)
-      if result == "quit" then
-        return
-      elseif result == "redraw" or result == "abort_music" or state.dirty then
-        break
-      end
-    end
+  local tEnd = os.clock() + (tonumber(seconds) or 0)
+  while state.running and os.clock() < tEnd do
+    local slice = math.min(0.05, tEnd - os.clock())
+    if slice <= 0 then return end
+    musicYield(slice)
   end
 end
 
@@ -1896,8 +1965,8 @@ local function playSong(song, spkList)
             end
           end
           if spk then
-            local ok = spk.playNote(note.inst, vol, note.pitch)
-            if ok then
+            local okCall, played = pcall(spk.playNote, note.inst, vol, note.pitch)
+            if okCall and played then
               load[spkIdx] = used + 1
             else
               failed[#failed + 1] = { note = note, spk = spk, vol = vol }
@@ -1916,9 +1985,7 @@ local function playSong(song, spkList)
       end
       for _, item in ipairs(failed) do
         local n = item.note
-        pcall(function()
-          item.spk.playNote(n.inst, item.vol, n.pitch)
-        end)
+        pcall(item.spk.playNote, n.inst, item.vol, n.pitch)
       end
     end
   end
@@ -1942,7 +2009,7 @@ local function musicLoop(spkList)
       state.dirty = true
       stopSpeakers(spkList)
       while state.running and not state.musicOn do
-        idleSleep(0.2)
+        idleSleep(0.1)
       end
       if not state.running then break end
       state.skipSong = false
@@ -1979,11 +2046,12 @@ local function musicLoop(spkList)
       state.songName = song.name or ("song " .. idx)
       state.dirty = true
 
-      local ok = pcall(playSong, song, spkList)
+      local ok, err = pcall(playSong, song, spkList)
       state.polyVoices = 0
       if not ok then
         state.songName = "err"
         state.dirty = true
+        -- Keep going; don't freeze the board on a single bad track.
         idleSleep(0.5)
       end
     end
@@ -1998,6 +2066,94 @@ local function musicLoop(spkList)
 
   state.polyVoices = 0
   stopSpeakers(spkList)
+end
+
+pumpMusic = function()
+  if not state.running then return end
+  if not musicThread or coroutine.status(musicThread) == "dead" then
+    musicThread = coroutine.create(function()
+      musicLoop(speakers)
+    end)
+    musicWakeAt = 0
+  end
+  if os.clock() < musicWakeAt then return end
+  local ok = coroutine.resume(musicThread)
+  if not ok then
+    state.songName = "err"
+    state.dirty = true
+    musicThread = nil
+    musicWakeAt = os.clock() + 0.5
+  end
+end
+
+-- ============================================================
+-- UI loop (owns all os.pullEventRaw calls)
+-- ============================================================
+local function updateScroll()
+  if not AUTO_SCROLL then return end
+  if state.bodyLines <= state.bodyHeight then return end
+  local now = os.epoch("utc")
+  if now < state.scrollAt then return end
+  state.scrollAt = now + math.floor(SCROLL_SECONDS * 1000)
+  local maxOff = state.bodyLines - state.bodyHeight
+  state.scrollOffset = state.scrollOffset + 1
+  if state.scrollOffset > maxOff then
+    state.scrollOffset = 0
+  end
+  state.dirty = true
+end
+
+local function uiLoop()
+  scheduleNextQuote(QUOTE_INTERVAL)
+  state.startedAt = os.epoch("utc")
+  musicWakeAt = 0
+
+  while state.running do
+    -- Drive music coroutine (single event loop — no parallel event stealing).
+    pumpMusic()
+
+    -- Atmosphere daypart auto-switch (Minecraft os.time hours).
+    local sceneResult = checkSceneAuto()
+    if sceneResult == "abort_music" then
+      state.skipSong = true
+      stopSpeakers()
+    end
+
+    -- Quote rotation pauses while a mini-app is open.
+    if (not state.app) and (not state.paused) and os.epoch("utc") >= state.nextQuoteAt then
+      advanceQuote()
+    end
+    if not state.app then
+      updateScroll()
+    elseif state.app.tick then
+      local tickResult = handleAppAction(state.app:tick())
+      if tickResult == "quit" then return end
+    end
+
+    local q = allQuotes[state.quoteIdx]
+    drawAll(q)
+    state.dirty = false
+
+    -- Sleep until UI tick or music needs another resume, whichever is sooner.
+    local wait = UI_TICK
+    local untilMusic = musicWakeAt - os.clock()
+    if untilMusic > 0 and untilMusic < wait then
+      wait = math.max(0.05, untilMusic)
+    end
+    local timerId = os.startTimer(wait)
+    while state.running do
+      local ev = { os.pullEventRaw() }
+      if ev[1] == "timer" and ev[2] == timerId then
+        break
+      end
+      local result = handleGlobalEvent(ev)
+      if result == "quit" then
+        return
+      elseif result == "redraw" or result == "abort_music" or state.dirty then
+        break
+      end
+    end
+  end
 end
 
 -- ============================================================
@@ -2069,7 +2225,8 @@ local function main()
   end
   ensureQuoteMatchesFilter()
   state.startedAt = os.epoch("utc")
-  state.sceneCheckAt = 0
+  -- Defer daypart auto so the title track is not skipped on the first UI tick.
+  state.sceneCheckAt = os.epoch("utc") + 20000
 
   local attached = peripheral.getNames()
   print("quote-board: peripherals (" .. #attached .. ")")
@@ -2118,10 +2275,9 @@ local function main()
   drawSplash()
   os.sleep((#speakers == 0 or not box) and 3 or 1.5)
 
-  parallel.waitForAll(
-    function() uiLoop() end,
-    function() musicLoop(speakers) end
-  )
+  -- Single event loop (UI + music coroutine). Do not use parallel here —
+  -- a second pullEvent loop steals key/touch events from the board.
+  uiLoop()
 end
 
 local ok, err = pcall(main)
