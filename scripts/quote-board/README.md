@@ -49,7 +49,7 @@ wget https://raw.githubusercontent.com/headmaster695-byte/DekMiscCC/main/scripts
 | `X` | Back to launcher / board |
 | `H` | Help overlay + session stats |
 | `Q` / `Ctrl+T` | Quit |
-| Monitor touch | Next quote, or interact with apps |
+| Monitor touch | Toolbar buttons (Mute/Skip/Apps/…) or tap quote body for next |
 
 ## Chat commands
 
@@ -155,8 +155,13 @@ Bundles that set **playlist**, **quote category**, and an optional **board title
 ### Display
 - Boot splash
 - Clock in the header (title swaps when a scene is active)
+- **On-screen touch toolbar**: Prev / Pause / Next / Mute·Unmute / Skip / Vol / Scene / Apps
 - Mirrored across all attached colour monitors
 - Help overlay with session stats (uptime, quotes shown, chat captured)
+
+### Reliability
+- Single event loop (music is a coroutine) so mute/unmute and touch are not stolen by a parallel music thread
+- Title track is not skipped by daypart auto on the first UI tick
 
 ## Config
 
